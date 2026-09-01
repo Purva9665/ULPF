@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  ulpf-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ulpf-engine
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - ULPF_LOG_LEVEL=INFO
+      - ULPF_DB_PATH=/data/ulpf_events.db
+      - ULPF_STATIC_DIR=/app/static
+    volumes:
+      - ulpf-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  ulpf-data:
+    driver: local
