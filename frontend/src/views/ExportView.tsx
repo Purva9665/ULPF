@@ -5,15 +5,10 @@ import type {
   ExportSchemas 
 } from '../types';
 import { 
-  FileCode, 
   ArrowLeft, 
-  CheckCircle2, 
   Download, 
   Copy, 
-  Check, 
-  Server, 
-  Clock, 
-  ShieldCheck, 
+  Check
 } from 'lucide-react';
 
 interface ExportViewProps {
@@ -25,7 +20,7 @@ interface ExportViewProps {
 
 export const ExportView: React.FC<ExportViewProps> = ({
   context,
-  stats,
+  stats: _stats,
   exports,
   onBackToOverview,
 }) => {
@@ -50,64 +45,22 @@ export const ExportView: React.FC<ExportViewProps> = ({
   };
 
   const finalEvent = context?.final_event;
-  const isReady = !!exports || !!finalEvent;
-  const totalExported = stats?.storage.total_events || stats?.total_processed || 1;
 
   const EXPORT_DESTINATIONS = [
-    {
-      id: 'ulpf',
-      name: 'ULPF Canonical Standard',
-      target: 'Native Data Bus / Core SIEM',
-      schema: 'ULPF v1.0.0 Zero-Loss',
-      status: 'ONLINE',
-      format: 'JSON / Native',
-      badge: 'badge-cyan',
-    },
-    {
-      id: 'elastic',
-      name: 'Elastic Common Schema (ECS)',
-      target: 'Elasticsearch 8.x / OpenSearch / Logstash',
-      schema: 'ECS 8.11 / @timestamp',
-      status: 'ONLINE',
-      format: 'REST Bulk / Index API',
-      badge: 'badge-purple',
-    },
-    {
-      id: 'splunk',
-      name: 'Splunk HEC (HTTP Event Collector)',
-      target: 'Splunk Enterprise / Cloud Indexer',
-      schema: 'Splunk JSON Event Envelope',
-      status: 'ONLINE',
-      format: 'HEC REST / 8088',
-      badge: 'badge-amber',
-    },
-    {
-      id: 'ocsf',
-      name: 'Open Cybersecurity Schema (OCSF)',
-      target: 'AWS Security Lake / Snowflake / Chronicle',
-      schema: 'OCSF v1.1.0 (Class 4001)',
-      status: 'ONLINE',
-      format: 'OCSF Event Schema',
-      badge: 'badge-green',
-    },
-    {
-      id: 'parquet',
-      name: 'Columnar Flat Schema (Parquet)',
-      target: 'AWS S3 / Apache Iceberg / Athena',
-      schema: 'Flat Parquet Dataframe Row',
-      status: 'ONLINE',
-      format: 'Columnar JSON / S3',
-      badge: 'badge-blue',
-    },
+    { id: 'ulpf', name: 'ULPF Canonical', schema: 'Zero-Loss Canonical JSON', target: 'Native Storage Bus' },
+    { id: 'elastic', name: 'Elastic ECS 8.11', schema: '@timestamp / ECS Schema', target: 'Elasticsearch / Logstash' },
+    { id: 'splunk', name: 'Splunk HEC', schema: 'Splunk Event Envelope', target: 'HTTP Event Collector' },
+    { id: 'ocsf', name: 'OCSF 1.9.0.0', schema: 'Open Cybersecurity Schema', target: 'AWS Security Lake' },
+    { id: 'parquet', name: 'Columnar Flat', schema: 'Flattened Key-Value Row', target: 'S3 / Athena / Iceberg' },
   ];
 
   const getPayloadForFormat = () => {
-    if (!exports) return finalEvent ? finalEvent : { message: 'Awaiting event completion' };
+    if (!exports) return finalEvent ? finalEvent : { message: 'Awaiting event completion to generate exports' };
     switch (selectedFormat) {
       case 'ulpf': return exports.ulpf_standard || finalEvent;
       case 'elastic': return exports.elastic_ecs;
       case 'splunk': return exports.splunk_hec;
-      case 'ocsf': return exports.ocsf_v1;
+      case 'ocsf': return exports.ocsf_1_9_0;
       case 'parquet': return exports.columnar_flat;
       default: return exports.ulpf_standard;
     }
@@ -116,115 +69,43 @@ export const ExportView: React.FC<ExportViewProps> = ({
   const currentPayload = getPayloadForFormat();
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       
-      {/* Top Header Bar */}
-      <div className="glass-panel" style={{ padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+      {/* Header Bar */}
+      <div className="panel-machined" style={{ padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <button
             onClick={onBackToOverview}
-            className="btn-cyber btn-cyber-secondary"
-            style={{ padding: '6px 12px', fontSize: '0.78rem' }}
+            className="btn-instrument"
           >
-            <ArrowLeft size={14} />
+            <ArrowLeft size={13} />
             <span>Control Room</span>
           </button>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span className="badge badge-blue" style={{ fontSize: '0.72rem' }}>STAGE 07</span>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, fontFamily: 'var(--font-display)', color: '#f8fafc' }}>
-                Standardized SIEM & Data Lake Exporter
-              </h2>
-            </div>
-            <p style={{ fontSize: '0.74rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
-              Real-Time Serialization for Elastic ECS 8.x, Splunk HEC, OCSF v1.1, and Parquet Columnar Storage
-            </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span className="badge-inst badge-amber">STAGE [07]</span>
+            <h2 style={{ fontSize: '1.05rem', fontWeight: 700, fontFamily: 'var(--font-chrome)', color: 'var(--text-high)' }}>
+              SIEM & Data Lake Exporters
+            </h2>
           </div>
         </div>
 
-        {/* Stage Path */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(15, 23, 42, 0.7)', padding: '6px 14px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
-          <span style={{ fontSize: '0.72rem', color: '#10b981', fontFamily: 'var(--font-mono)' }}>VALIDATED ULPF</span>
-          <span style={{ color: '#64748b' }}>➔</span>
-          <span style={{ fontSize: '0.72rem', color: '#818cf8', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>[07] EXPORT ENGINE</span>
-          <span style={{ color: '#64748b' }}>➔</span>
-          <span style={{ fontSize: '0.72rem', color: '#00f0ff', fontFamily: 'var(--font-mono)' }}>SIEM / S3 DESTINATIONS</span>
+        <div className="readout" style={{ fontSize: '0.74rem', color: 'var(--confirm-moss)' }}>
+          4 PRODUCTION FORMATS GENERATED
         </div>
       </div>
 
-      {/* Top 4 Metrics Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+      {/* Main Grid: Left Format Selector, Right Schema Preview */}
+      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '12px' }}>
         
-        <div className="glass-panel" style={{ padding: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>Export Formats</span>
-            <FileCode size={16} color="#818cf8" />
-          </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'var(--font-mono)', color: '#818cf8', margin: '4px 0' }}>
-            5 Standard Envelopes
-          </div>
-          <div style={{ fontSize: '0.68rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
-            ECS, Splunk, OCSF, Parquet, ULPF
-          </div>
-        </div>
-
-        <div className="glass-panel" style={{ padding: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>Records Exported</span>
-            <CheckCircle2 size={16} color="#10b981" />
-          </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'var(--font-mono)', color: '#10b981', margin: '4px 0' }}>
-            {totalExported.toLocaleString()} Events
-          </div>
-          <div style={{ fontSize: '0.68rem', color: '#34d399', fontFamily: 'var(--font-mono)' }}>
-            100% Schema Conformance
-          </div>
-        </div>
-
-        <div className="glass-panel" style={{ padding: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>Export Status</span>
-            <ShieldCheck size={16} color="#00f0ff" />
-          </div>
-          <div style={{ fontSize: '1.3rem', fontWeight: 800, fontFamily: 'var(--font-mono)', color: '#00f0ff', margin: '4px 0' }}>
-            {isReady ? 'DISPATCH READY' : 'QUEUED'}
-          </div>
-          <div style={{ fontSize: '0.68rem', color: '#38bdf8', fontFamily: 'var(--font-mono)' }}>
-            Non-Blocking Zero-Copy Output
-          </div>
-        </div>
-
-        <div className="glass-panel" style={{ padding: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>Serialization Latency</span>
-            <Clock size={16} color="#fbbf24" />
-          </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'var(--font-mono)', color: '#fbbf24', margin: '4px 0' }}>
-            16 µs
-          </div>
-          <div style={{ fontSize: '0.68rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
-            Fast In-Memory JSON Encoding
-          </div>
-        </div>
-
-      </div>
-
-      {/* Main Grid: Left Destination Connectors, Right Live Export Payload Preview */}
-      <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: '20px' }}>
-        
-        {/* Left: Export Destinations & Formats */}
-        <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Server size={18} color="#818cf8" />
-              <h3 style={{ fontSize: '0.98rem', fontWeight: 700, fontFamily: 'var(--font-display)', color: '#f8fafc' }}>
-                SIEM & Lake Destinations
-              </h3>
-            </div>
-            <span className="badge badge-blue" style={{ fontSize: '0.62rem' }}>5 CONNECTORS</span>
+        {/* Left: Destination List */}
+        <div className="panel-machined" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ borderBottom: '1px solid var(--hairline)', paddingBottom: '8px' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-high)', fontFamily: 'var(--font-chrome)' }}>
+              EXPORT TARGET SCHEMAS
+            </span>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, overflowY: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {EXPORT_DESTINATIONS.map((dest) => {
               const isSelected = selectedFormat === dest.id;
               return (
@@ -232,71 +113,57 @@ export const ExportView: React.FC<ExportViewProps> = ({
                   key={dest.id}
                   onClick={() => setSelectedFormat(dest.id as any)}
                   style={{
-                    background: isSelected ? 'rgba(99, 102, 241, 0.15)' : 'rgba(15, 23, 42, 0.65)',
-                    border: `1.5px solid ${isSelected ? '#818cf8' : 'rgba(255, 255, 255, 0.05)'}`,
-                    borderRadius: '8px',
-                    padding: '12px 14px',
+                    background: isSelected ? 'var(--phosphor-amber-dim)' : 'var(--panel-sunken)',
+                    border: `1px solid ${isSelected ? 'var(--phosphor-amber)' : 'var(--hairline)'}`,
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '8px 10px',
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: isSelected ? '#818cf8' : '#f8fafc', fontFamily: 'var(--font-main)' }}>
-                      {dest.name}
-                    </span>
-                    <span className="badge badge-green" style={{ fontSize: '0.58rem' }}>
-                      {dest.status}
-                    </span>
+                  <div style={{ fontSize: '0.76rem', fontWeight: isSelected ? 700 : 600, color: isSelected ? 'var(--phosphor-amber)' : 'var(--text-high)' }}>
+                    {dest.name}
                   </div>
-
-                  <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
-                    Target: {dest.target}
-                  </div>
-                  <div style={{ fontSize: '0.66rem', color: '#64748b', fontFamily: 'var(--font-mono)', marginTop: '2px' }}>
-                    Format: {dest.schema}
+                  <div className="readout" style={{ fontSize: '0.64rem', color: 'var(--text-low)', marginTop: '2px' }}>
+                    {dest.target}
                   </div>
                 </div>
               );
             })}
           </div>
-
         </div>
 
-        {/* Right: Live Schema Envelope JSON Preview */}
-        <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <FileCode size={18} color="#00f0ff" />
-              <h3 style={{ fontSize: '0.98rem', fontWeight: 700, fontFamily: 'var(--font-display)', color: '#f8fafc' }}>
-                Standardized Envelope Payload: <code style={{ color: '#00f0ff' }}>{selectedFormat.toUpperCase()}</code>
-              </h3>
-            </div>
+        {/* Right: Payload Readout & Action Buttons */}
+        <div className="panel-machined" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--hairline)', paddingBottom: '8px' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-high)', fontFamily: 'var(--font-chrome)' }}>
+              EXPORT PAYLOAD PREVIEW ({selectedFormat.toUpperCase()})
+            </span>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <button
                 onClick={() => copyText(JSON.stringify(currentPayload, null, 2))}
-                className="btn-cyber btn-cyber-secondary"
-                style={{ padding: '4px 10px', fontSize: '0.72rem' }}
+                className="btn-instrument"
+                style={{ padding: '3px 8px', fontSize: '0.68rem' }}
               >
-                {copied ? <Check size={12} color="#10b981" /> : <Copy size={12} />}
+                {copied ? <Check size={10} color="var(--confirm-moss)" /> : <Copy size={10} />}
                 <span>Copy JSON</span>
               </button>
 
               <button
-                onClick={() => downloadJson(currentPayload, `ulpf_export_${selectedFormat}_${context?.event_id || 'sample'}.json`)}
-                className="btn-cyber btn-cyber-primary"
-                style={{ padding: '4px 12px', fontSize: '0.72rem' }}
+                onClick={() => downloadJson(currentPayload, `ulpf_export_${selectedFormat}.json`)}
+                className="btn-instrument btn-instrument-primary"
+                style={{ padding: '3px 8px', fontSize: '0.68rem' }}
               >
-                <Download size={12} />
+                <Download size={10} />
                 <span>Download</span>
               </button>
             </div>
           </div>
 
-          <div className="code-box" style={{ flex: 1, maxHeight: '440px', overflowY: 'auto' }}>
+          <div className="readout-box" style={{ minHeight: '380px', color: 'var(--text-mid)', fontSize: '0.72rem' }}>
             {JSON.stringify(currentPayload, null, 2)}
           </div>
-
         </div>
 
       </div>

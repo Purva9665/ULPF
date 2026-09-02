@@ -13,6 +13,7 @@ from backend.parsers.cef import CEFParser
 from backend.parsers.keyvalue import KeyValueParser
 from backend.parsers.syslog import SyslogGenericParser
 from backend.parsers.windows import WindowsEventParser
+from backend.parsers.adaptive import AdaptiveTemplateParser
 
 
 def register_all_builtin_parsers() -> None:
@@ -26,6 +27,10 @@ def register_all_builtin_parsers() -> None:
     default_registry.register(KeyValueParser())
     default_registry.register(SyslogGenericParser())
     default_registry.register(WindowsEventParser())
+    # Registered last and deliberately low-confidence: this is the fallback that
+    # guarantees an unknown source still yields structure (requirements e, i).
+    # The registry resolves by confidence, so a purpose-built parser always wins.
+    default_registry.register(AdaptiveTemplateParser())
 
 
 # Auto-register on import
@@ -41,5 +46,6 @@ __all__ = [
     "KeyValueParser",
     "SyslogGenericParser",
     "WindowsEventParser",
+    "AdaptiveTemplateParser",
     "register_all_builtin_parsers",
 ]

@@ -172,6 +172,10 @@ class ULPFNormalizedEvent(BaseModel):
     event_id: str
     raw: RawPayload
     event: EventMetadata
+    classification: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Canonical taxonomy result: OCSF class, ULPF threat class, evidence"
+    )
     source: NetworkEndpoint = Field(default_factory=NetworkEndpoint)
     destination: NetworkEndpoint = Field(default_factory=NetworkEndpoint)
     network: NetworkDetails = Field(default_factory=NetworkDetails)

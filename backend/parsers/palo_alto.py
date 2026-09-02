@@ -11,6 +11,12 @@ from backend.core.base_parser import BaseParser
 from backend.core.models import ULPFRawEvent, ULPFParsedEvent
 
 
+def row_len_ok(actual: int, expected: int) -> bool:
+    """PAN-OS only ever appends columns across releases, so extra trailing
+    fields are expected; missing ones are not."""
+    return actual >= expected
+
+
 class PaloAltoParser(BaseParser):
     name = "palo_alto_panos"
     vendor = "Palo Alto Networks"
@@ -48,6 +54,11 @@ class PaloAltoParser(BaseParser):
         "device_group_hierarchy_level_3", "device_group_hierarchy_level_4", "vsys_name",
         "device_name"
     ]
+
+    #: Minimum column count PAN-OS emits per log type. PAN-OS appends fields in
+    #: later releases, so a longer row is fine; a shorter one means the row is
+    #: truncated or a column is missing and positions cannot be trusted.
+    EXPECTED_ARITY = {"TRAFFIC": 47, "THREAT": 53}
 
     def can_parse(self, raw_event: ULPFRawEvent) -> Tuple[bool, float]:
         text = raw_event.raw.payload
@@ -93,6 +104,19 @@ class PaloAltoParser(BaseParser):
 
         fields_spec = self.THREAT_FIELDS if log_type == "THREAT" else self.TRAFFIC_FIELDS
 
+        # Positional CSV parsing is only safe if the row arity is what the spec
+        # expects. A single missing column silently shifts every field after it,
+        # so a PAN-OS traffic log can report the byte count as the action. Detect
+        # that here and degrade confidence rather than emit plausible-looking
+        # but wrong values.
+        expected = self.EXPECTED_ARITY.get(log_type)
+        arity_ok = expected is None or row_len_ok(len(row), expected)
+        if not arity_ok:
+            extracted["_parse_warning"] = (
+                "PAN-OS {} row has {} columns; expected {}. Field alignment is "
+                "not trustworthy.".format(log_type, len(row), expected)
+            )
+
         for idx, val in enumerate(row):
             if idx < len(fields_spec):
                 key = fields_spec[idx]
@@ -108,6 +132,7 @@ class PaloAltoParser(BaseParser):
                         extracted[key] = val_clean
 
         extracted["panos_log_type"] = log_type
+        extracted["_field_alignment_verified"] = arity_ok
         extracted["vendor"] = self.vendor
         extracted["product"] = self.product
 
@@ -120,7 +145,7 @@ class PaloAltoParser(BaseParser):
             parser_name=self.name,
             parser_vendor=self.vendor,
             parser_product=self.product,
-            confidence_score=0.98,
+            confidence_score=0.98 if arity_ok else 0.45,
             extracted_fields=extracted,
             tokens=tokens,
         )

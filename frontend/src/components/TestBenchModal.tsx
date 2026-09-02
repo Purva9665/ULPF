@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Terminal, X, Play, Sparkles } from 'lucide-react';
+import { Terminal, X, Play, Zap } from 'lucide-react';
 import type { SampleLog } from '../types';
 
 interface TestBenchModalProps {
@@ -29,151 +29,126 @@ export const TestBenchModal: React.FC<TestBenchModalProps> = ({
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose}>
       <div 
-        className="glass-panel"
+        className="panel-machined"
         onClick={(e) => e.stopPropagation()}
         style={{
           width: '100%',
-          maxWidth: '750px',
-          padding: '24px',
-          borderRadius: '12px',
-          boxShadow: '0 0 40px rgba(0, 240, 255, 0.2)',
-          border: '1px solid rgba(0, 240, 255, 0.4)',
+          maxWidth: '720px',
+          padding: '20px',
         }}
       >
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '6px', background: 'rgba(0, 240, 255, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Terminal size={18} color="#00f0ff" />
-            </div>
-            <div>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, fontFamily: 'var(--font-display)', color: '#f8fafc' }}>
-                ULPF Ingestion Test Bench
-              </h3>
-              <p style={{ fontSize: '0.72rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
-                Inject and test arbitrary heterogeneous perimeter firewall and security logs
-              </p>
-            </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', borderBottom: '1px solid var(--hairline)', paddingBottom: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Terminal size={16} color="var(--phosphor-amber)" />
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 700, fontFamily: 'var(--font-chrome)', color: 'var(--text-high)' }}>
+              INGESTION TEST BENCH
+            </h3>
           </div>
           <button 
             onClick={onClose}
-            style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
+            className="btn-instrument"
+            style={{ padding: '3px 6px' }}
           >
-            <X size={20} />
+            <X size={12} />
           </button>
         </div>
 
-        {/* Quick Presets */}
-        <div style={{ marginBottom: '14px' }}>
-          <span style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', display: 'block', marginBottom: '6px' }}>
-            Quick Load Authentic Attack & Traffic Samples:
-          </span>
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {samples.slice(0, 6).map((s) => (
+        {/* Sample Presets Strip */}
+        <div style={{ marginBottom: '12px' }}>
+          <div className="readout" style={{ fontSize: '0.66rem', color: 'var(--text-low)', marginBottom: '4px' }}>
+            LOAD PRESET TELEMETRY LOG:
+          </div>
+          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+            {samples.map((s) => (
               <button
                 key={s.id}
                 onClick={() => loadSample(s)}
-                style={{
-                  background: 'rgba(15, 23, 42, 0.8)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  color: '#cbd5e1',
-                  padding: '4px 8px',
-                  borderRadius: '4px',
-                  fontSize: '0.7rem',
-                  fontFamily: 'var(--font-mono)',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#00f0ff')}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)')}
+                className="btn-instrument"
+                style={{ padding: '3px 6px', fontSize: '0.66rem' }}
               >
-                {s.title}
+                {s.vendor} • {s.title}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Input Textarea */}
-        <div style={{ marginBottom: '16px' }}>
-          <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>
-            Raw Log Payload String:
-          </span>
+        {/* Raw Log Input Area */}
+        <div style={{ marginBottom: '12px' }}>
+          <div className="readout" style={{ fontSize: '0.66rem', color: 'var(--text-low)', marginBottom: '4px' }}>
+            RAW LOG PAYLOAD:
+          </div>
           <textarea
             value={rawInput}
             onChange={(e) => setRawInput(e.target.value)}
             rows={5}
             style={{
               width: '100%',
-              background: '#020617',
-              color: '#38bdf8',
-              border: '1px solid rgba(0, 240, 255, 0.25)',
-              borderRadius: '8px',
-              padding: '12px',
-              fontFamily: 'var(--font-mono)',
-              fontSize: '0.82rem',
+              background: 'var(--panel-sunken)',
+              border: '1px solid var(--hairline)',
+              borderRadius: 'var(--radius-sm)',
+              color: 'var(--text-high)',
+              fontFamily: 'var(--font-readout)',
+              fontSize: '0.74rem',
+              padding: '8px',
               outline: 'none',
               resize: 'vertical',
             }}
-            placeholder="Paste your raw syslog, CEF, JSON, PAN-OS CSV, or VPC flow log..."
           />
         </div>
 
-        {/* Parser Selection */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: '#94a3b8' }}>Parser Dialect:</span>
+        {/* Parser Selection & Run Buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span className="readout" style={{ fontSize: '0.68rem', color: 'var(--text-low)' }}>DIALECT PARSER:</span>
             <select
               value={explicitParser}
               onChange={(e) => setExplicitParser(e.target.value)}
               style={{
-                background: 'rgba(15, 23, 42, 0.9)',
-                color: '#f8fafc',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
-                padding: '6px 12px',
-                borderRadius: '6px',
-                fontFamily: 'var(--font-mono)',
-                fontSize: '0.78rem',
+                background: 'var(--panel-sunken)',
+                border: '1px solid var(--hairline)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--text-high)',
+                fontFamily: 'var(--font-readout)',
+                fontSize: '0.72rem',
+                padding: '4px 8px',
                 outline: 'none',
               }}
             >
-              <option value="auto">Auto-Detect Dialect (Recommended)</option>
-              <option value="cisco_asa">Cisco ASA / FTD Syslog</option>
+              <option value="auto">Auto-Detect Dialect</option>
+              <option value="cisco_asa">Cisco ASA Syslog</option>
               <option value="palo_alto_panos">Palo Alto PAN-OS CSV</option>
-              <option value="suricata_eve">Suricata / Snort EVE JSON</option>
-              <option value="aws_vpc_flow">AWS VPC Flow Log</option>
-              <option value="zeek_network_security">Zeek (Bro) Conn / DNS TSV</option>
-              <option value="arcsight_cef">ArcSight CEF</option>
-              <option value="generic_keyvalue">Fortinet / Key-Value</option>
-              <option value="syslog_generic">Linux Syslog / iptables / NGINX</option>
-              <option value="windows_security_event">Windows Security Event</option>
+              <option value="suricata_eve">Suricata EVE JSON</option>
+              <option value="zeek_conn">Zeek Connection TSV</option>
+              <option value="aws_vpc_flow">AWS VPC Flow Logs</option>
+              <option value="cef">ArcSight CEF</option>
+              <option value="key_value">Generic Key=Value</option>
+              <option value="syslog_rfc3164">BSD Syslog RFC 3164</option>
+              <option value="windows_security_event">Windows Event XML</option>
             </select>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '8px' }}>
             <button
-              className="btn-cyber btn-cyber-secondary"
-              onClick={() => {
-                onStreamCustom(rawInput);
-                onClose();
-              }}
+              onClick={() => onStreamCustom(rawInput)}
+              className="btn-instrument"
             >
-              <Sparkles size={14} color="#00f0ff" />
-              <span>Live Stream Event</span>
+              <Play size={11} />
+              <span>Stream Live</span>
             </button>
 
             <button
-              className="btn-cyber btn-cyber-primary"
-              onClick={() => {
-                onRunCustom(rawInput, explicitParser === 'auto' ? undefined : explicitParser);
-                onClose();
-              }}
+              onClick={() => onRunCustom(rawInput, explicitParser === 'auto' ? undefined : explicitParser)}
+              className="btn-instrument btn-instrument-primary"
             >
-              <Play size={14} />
-              <span>Run Pipeline Synchronously</span>
+              <Zap size={11} />
+              <span>Process Event</span>
             </button>
           </div>
+
         </div>
 
       </div>

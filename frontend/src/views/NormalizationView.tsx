@@ -4,15 +4,7 @@ import type {
   EngineStats 
 } from '../types';
 import { 
-  GitMerge, 
-  ArrowLeft, 
-  CheckCircle2, 
-  Layers, 
-  ArrowRight, 
-  Copy, 
-  Check, 
-  Clock, 
-  Lock, 
+  ArrowLeft 
 } from 'lucide-react';
 
 interface NormalizationViewProps {
@@ -25,22 +17,14 @@ export const NormalizationView: React.FC<NormalizationViewProps> = ({
   context,
   onBackToOverview,
 }) => {
-  const [copied, setCopied] = useState(false);
   const [selectedTaxonomy, setSelectedTaxonomy] = useState<'all' | 'event' | 'source' | 'destination' | 'network' | 'unmapped'>('all');
-
-  const copyJson = (obj: any) => {
-    navigator.clipboard.writeText(JSON.stringify(obj, null, 2));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   const normEvent = context?.normalized_event;
   const rawFields = context?.parsed_event?.extracted_fields || {};
   const unmapped = normEvent?.unmapped_fields || {};
-  const mappingRule = normEvent?.mapping_rule_used || 'Standard Canonical Taxonomy v1.0.0';
+  const mappingRule = normEvent?.mapping_rule_used || 'Standard Canonical Taxonomy v1.0';
   const durationUs = normEvent?.normalization_duration_us || 32;
 
-  // Build transformation map: Raw Source Key -> Canonical Key & Value
   const TRANSFORMATION_ROWS: Array<{
     sourceKey: string;
     sourceVal: any;
@@ -51,7 +35,6 @@ export const NormalizationView: React.FC<NormalizationViewProps> = ({
   }> = [];
 
   if (normEvent) {
-    // 1. Event
     TRANSFORMATION_ROWS.push({
       sourceKey: 'action / rule_action',
       sourceVal: rawFields.action || rawFields.rule_action || 'DENY',
@@ -76,8 +59,6 @@ export const NormalizationView: React.FC<NormalizationViewProps> = ({
       transformType: 'TYPE_CAST',
       category: 'event',
     });
-
-    // 2. Source
     TRANSFORMATION_ROWS.push({
       sourceKey: 'src_ip / src / source_ip',
       sourceVal: rawFields.src_ip || rawFields.src || rawFields.source_ip || normEvent.source.ip,
@@ -94,8 +75,6 @@ export const NormalizationView: React.FC<NormalizationViewProps> = ({
       transformType: 'TYPE_CAST',
       category: 'source',
     });
-
-    // 3. Destination
     TRANSFORMATION_ROWS.push({
       sourceKey: 'dst_ip / dst / dest_ip',
       sourceVal: rawFields.dst_ip || rawFields.dst || rawFields.dest_ip || normEvent.destination.ip,
@@ -112,26 +91,14 @@ export const NormalizationView: React.FC<NormalizationViewProps> = ({
       transformType: 'TYPE_CAST',
       category: 'destination',
     });
-
-    // 4. Network
     TRANSFORMATION_ROWS.push({
-      sourceKey: 'proto / protocol / transport',
+      sourceKey: 'proto / protocol',
       sourceVal: rawFields.proto || rawFields.protocol || normEvent.network.protocol,
       targetPath: 'network.protocol',
       targetVal: normEvent.network.protocol,
       transformType: 'DIRECT',
       category: 'network',
     });
-    TRANSFORMATION_ROWS.push({
-      sourceKey: 'bytes / length / bytes_total',
-      sourceVal: rawFields.bytes || rawFields.length || normEvent.network.bytes_total || '1420',
-      targetPath: 'network.bytes_total',
-      targetVal: normEvent.network.bytes_total || 1420,
-      transformType: 'TYPE_CAST',
-      category: 'network',
-    });
-
-    // 5. Unmapped fields
     Object.entries(unmapped).forEach(([k, v]) => {
       TRANSFORMATION_ROWS.push({
         sourceKey: k,
@@ -144,223 +111,144 @@ export const NormalizationView: React.FC<NormalizationViewProps> = ({
     });
   }
 
-  const filteredRows = selectedTaxonomy === 'all' 
-    ? TRANSFORMATION_ROWS 
+  const filteredRows = selectedTaxonomy === 'all'
+    ? TRANSFORMATION_ROWS
     : TRANSFORMATION_ROWS.filter((r) => r.category === selectedTaxonomy);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       
-      {/* Top Header */}
-      <div className="glass-panel" style={{ padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+      {/* Header Bar */}
+      <div className="panel-machined" style={{ padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <button
             onClick={onBackToOverview}
-            className="btn-cyber btn-cyber-secondary"
-            style={{ padding: '6px 12px', fontSize: '0.78rem' }}
+            className="btn-instrument"
           >
-            <ArrowLeft size={14} />
+            <ArrowLeft size={13} />
             <span>Control Room</span>
           </button>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span className="badge badge-cyan" style={{ fontSize: '0.72rem' }}>STAGE 03</span>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, fontFamily: 'var(--font-display)', color: '#f8fafc' }}>
-                Canonical Normalization Engine
-              </h2>
-            </div>
-            <p style={{ fontSize: '0.74rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
-              Heterogeneous Field Alignment to ULPF Common Schema & Zero-Loss Unmapped Preservation
-            </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span className="badge-inst badge-amber">STAGE [03]</span>
+            <h2 style={{ fontSize: '1.05rem', fontWeight: 700, fontFamily: 'var(--font-chrome)', color: 'var(--text-high)' }}>
+              Schema Normalization & Canonical Taxonomy
+            </h2>
           </div>
         </div>
 
-        {/* Stage Path */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(15, 23, 42, 0.7)', padding: '6px 14px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
-          <span style={{ fontSize: '0.72rem', color: '#c084fc', fontFamily: 'var(--font-mono)' }}>EXTRACTED AST</span>
-          <span style={{ color: '#64748b' }}>➔</span>
-          <span style={{ fontSize: '0.72rem', color: '#38bdf8', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>[03] NORMALIZATION</span>
-          <span style={{ color: '#64748b' }}>➔</span>
-          <span style={{ fontSize: '0.72rem', color: '#10b981', fontFamily: 'var(--font-mono)' }}>VALIDATED CANONICAL</span>
+        <div className="readout" style={{ fontSize: '0.74rem', color: 'var(--text-low)' }}>
+          STAGE LATENCY: <strong style={{ color: 'var(--phosphor-amber)' }}>{durationUs} µs</strong>
         </div>
       </div>
 
-      {/* Top 4 Metrics Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
-        
-        <div className="glass-panel" style={{ padding: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>Canonical Schema</span>
-            <GitMerge size={16} color="#38bdf8" />
+      {/* 4 Readout Metric Tiles */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
+        <div className="panel-machined" style={{ padding: '12px 14px' }}>
+          <div className="readout" style={{ fontSize: '0.64rem', color: 'var(--text-low)' }}>NORMALIZED ACTION</div>
+          <div className="readout" style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--confirm-moss)', margin: '2px 0' }}>
+            {normEvent?.event.action || 'ALLOW'}
           </div>
-          <div style={{ fontSize: '1.3rem', fontWeight: 800, fontFamily: 'var(--font-mono)', color: '#38bdf8', margin: '4px 0' }}>
-            ULPF v1.0.0
-          </div>
-          <div style={{ fontSize: '0.68rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
-            Rule: {mappingRule}
-          </div>
+          <div className="readout" style={{ fontSize: '0.66rem', color: 'var(--text-low)' }}>Canonical Enum</div>
         </div>
 
-        <div className="glass-panel" style={{ padding: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>Mapped Fields</span>
-            <CheckCircle2 size={16} color="#10b981" />
+        <div className="panel-machined" style={{ padding: '12px 14px' }}>
+          <div className="readout" style={{ fontSize: '0.64rem', color: 'var(--text-low)' }}>SEVERITY LEVEL</div>
+          <div className="readout" style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--phosphor-amber)', margin: '2px 0' }}>
+            {normEvent?.event.severity || 'INFORMATIONAL'}
           </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'var(--font-mono)', color: '#10b981', margin: '4px 0' }}>
-            {TRANSFORMATION_ROWS.filter((r) => r.transformType !== 'UNMAPPED_RETAIN').length} Mapped
-          </div>
-          <div style={{ fontSize: '0.68rem', color: '#34d399', fontFamily: 'var(--font-mono)' }}>
-            100% Taxonomical Alignment
-          </div>
+          <div className="readout" style={{ fontSize: '0.66rem', color: 'var(--text-low)' }}>Normalized Scale</div>
         </div>
 
-        <div className="glass-panel" style={{ padding: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>Unmapped Preserved</span>
-            <Lock size={16} color="#fbbf24" />
+        <div className="panel-machined" style={{ padding: '12px 14px' }}>
+          <div className="readout" style={{ fontSize: '0.64rem', color: 'var(--text-low)' }}>UNMAPPED FIELDS RETAINED</div>
+          <div className="readout" style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--signal-teal)', margin: '2px 0' }}>
+            {Object.keys(unmapped).length} <span style={{ fontSize: '0.75rem', color: 'var(--text-low)' }}>keys</span>
           </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'var(--font-mono)', color: '#fbbf24', margin: '4px 0' }}>
-            {Object.keys(unmapped).length} Attributes
-          </div>
-          <div style={{ fontSize: '0.68rem', color: '#fbbf24', fontFamily: 'var(--font-mono)' }}>
-            Zero-Loss Retention Guarantee
-          </div>
+          <div className="readout" style={{ fontSize: '0.66rem', color: 'var(--confirm-moss)' }}>Zero-Loss Container</div>
         </div>
 
-        <div className="glass-panel" style={{ padding: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>Mapping Latency</span>
-            <Clock size={16} color="#c084fc" />
+        <div className="panel-machined" style={{ padding: '12px 14px' }}>
+          <div className="readout" style={{ fontSize: '0.64rem', color: 'var(--text-low)' }}>TAXONOMY SPEC</div>
+          <div className="readout" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-high)', margin: '4px 0' }}>
+            {mappingRule}
           </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'var(--font-mono)', color: '#f8fafc', margin: '4px 0' }}>
-            {durationUs} µs
-          </div>
-          <div style={{ fontSize: '0.68rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
-            In-Memory AST Re-indexing
-          </div>
+          <div className="readout" style={{ fontSize: '0.66rem', color: 'var(--text-low)' }}>Deterministic Mapping</div>
         </div>
-
       </div>
 
-      {/* Main Workspace: Left Transformation Table, Right Canonical Schema Tree */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 420px', gap: '20px' }}>
-        
-        {/* Left: VISUAL TRANSFORMATION MAP TABLE */}
-        <div className="glass-panel" style={{ padding: '20px' }}>
-          
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <GitMerge size={18} color="#00f0ff" />
-              <h3 style={{ fontSize: '0.98rem', fontWeight: 700, fontFamily: 'var(--font-display)', color: '#f8fafc' }}>
-                Field Transformation Map (Source ➔ Canonical)
-              </h3>
-            </div>
+      {/* Main Transformation Matrix */}
+      <div className="panel-machined" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', borderBottom: '1px solid var(--hairline)', paddingBottom: '8px' }}>
+          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-high)', fontFamily: 'var(--font-chrome)' }}>
+            SOURCE FIELD ➔ CANONICAL FIELD TRANSFORMATION MATRIX
+          </span>
 
-            {/* Category Filter Pills */}
-            <div style={{ display: 'flex', gap: '4px' }}>
-              {(['all', 'event', 'source', 'destination', 'network', 'unmapped'] as const).map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setSelectedTaxonomy(cat)}
-                  style={{
-                    padding: '3px 8px',
-                    borderRadius: '4px',
-                    border: 'none',
-                    fontSize: '0.66rem',
-                    fontFamily: 'var(--font-mono)',
-                    cursor: 'pointer',
-                    background: selectedTaxonomy === cat ? '#00f0ff' : 'rgba(15, 23, 42, 0.8)',
-                    color: selectedTaxonomy === cat ? '#06090f' : '#94a3b8',
-                    fontWeight: 600,
+          {/* Filter Pills */}
+          <div style={{ display: 'flex', gap: '4px' }}>
+            {['all', 'event', 'source', 'destination', 'network', 'unmapped'].map((tax) => (
+              <button
+                key={tax}
+                onClick={() => setSelectedTaxonomy(tax as any)}
+                style={{
+                  background: selectedTaxonomy === tax ? 'var(--phosphor-amber-dim)' : 'var(--panel-sunken)',
+                  color: selectedTaxonomy === tax ? 'var(--phosphor-amber)' : 'var(--text-mid)',
+                  border: `1px solid ${selectedTaxonomy === tax ? 'var(--phosphor-amber)' : 'var(--hairline)'}`,
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '2px 8px',
+                  fontSize: '0.66rem',
+                  fontFamily: 'var(--font-readout)',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textTransform: 'uppercase',
+                }}
+              >
+                {tax}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontFamily: 'var(--font-readout)', fontSize: '0.72rem' }}>
+            <thead>
+              <tr style={{ background: 'var(--panel-sunken)', borderBottom: '1px solid var(--hairline)', color: 'var(--text-low)', textTransform: 'uppercase', fontSize: '0.64rem' }}>
+                <th style={{ padding: '6px 10px' }}>Source Field (Raw)</th>
+                <th style={{ padding: '6px 10px' }}>Raw Value</th>
+                <th style={{ padding: '6px 10px' }}>Transform Mode</th>
+                <th style={{ padding: '6px 10px' }}>Canonical Target Path</th>
+                <th style={{ padding: '6px 10px' }}>Normalized Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRows.map((row, idx) => (
+                <tr 
+                  key={idx}
+                  style={{ 
+                    borderBottom: '1px solid var(--hairline)',
+                    background: idx % 2 === 0 ? 'transparent' : 'rgba(255, 255, 255, 0.01)'
                   }}
                 >
-                  {cat.toUpperCase()}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Transformation Table */}
-          <div style={{ overflowX: 'auto', maxHeight: '420px', overflowY: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-mono)', fontSize: '0.74rem' }}>
-              <thead>
-                <tr style={{ background: 'rgba(15, 23, 42, 0.9)', color: '#64748b', textAlign: 'left', borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
-                  <th style={{ padding: '8px 10px' }}>SOURCE AST FIELD</th>
-                  <th style={{ padding: '8px 10px', textAlign: 'center' }}>TRANSFORM</th>
-                  <th style={{ padding: '8px 10px' }}>ULPF CANONICAL FIELD</th>
-                  <th style={{ padding: '8px 10px' }}>NORMALIZED VALUE</th>
+                  <td style={{ padding: '6px 10px', color: 'var(--text-mid)' }}>
+                    {row.sourceKey}
+                  </td>
+                  <td style={{ padding: '6px 10px', color: 'var(--text-high)' }}>
+                    {String(row.sourceVal)}
+                  </td>
+                  <td style={{ padding: '6px 10px' }}>
+                    <span className={`badge-inst ${row.transformType === 'UNMAPPED_RETAIN' ? 'badge-teal' : 'badge-hairline'}`}>
+                      {row.transformType}
+                    </span>
+                  </td>
+                  <td style={{ padding: '6px 10px', color: 'var(--phosphor-amber)', fontWeight: 600 }}>
+                    {row.targetPath}
+                  </td>
+                  <td style={{ padding: '6px 10px', color: 'var(--confirm-moss)', fontWeight: 600 }}>
+                    {String(row.targetVal)}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {filteredRows.map((row, idx) => (
-                  <tr
-                    key={idx}
-                    style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}
-                  >
-                    {/* Source */}
-                    <td style={{ padding: '8px 10px' }}>
-                      <div style={{ color: '#c084fc', fontWeight: 600 }}>{row.sourceKey}</div>
-                      <div style={{ color: '#64748b', fontSize: '0.66rem' }}>Val: {String(row.sourceVal)}</div>
-                    </td>
-
-                    {/* Transform Badge */}
-                    <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        <ArrowRight size={12} color="#00f0ff" />
-                        <span 
-                          className={`badge ${
-                            row.transformType === 'ENUM_NORM' ? 'badge-amber' :
-                            row.transformType === 'TYPE_CAST' ? 'badge-purple' :
-                            row.transformType === 'UNMAPPED_RETAIN' ? 'badge-blue' : 'badge-green'
-                          }`}
-                          style={{ fontSize: '0.58rem', padding: '1px 5px' }}
-                        >
-                          {row.transformType}
-                        </span>
-                      </div>
-                    </td>
-
-                    {/* Target Canonical Path */}
-                    <td style={{ padding: '8px 10px' }}>
-                      <div style={{ color: '#38bdf8', fontWeight: 700 }}>{row.targetPath}</div>
-                    </td>
-
-                    {/* Normalized Output Value */}
-                    <td style={{ padding: '8px 10px' }}>
-                      <span style={{ color: '#f8fafc', fontWeight: 600, background: 'rgba(0, 0, 0, 0.4)', padding: '2px 6px', borderRadius: '4px' }}>
-                        {String(row.targetVal)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-        </div>
-
-        {/* Right: Normalized Canonical JSON Output */}
-        <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Layers size={18} color="#10b981" />
-              <h3 style={{ fontSize: '0.98rem', fontWeight: 700, fontFamily: 'var(--font-display)', color: '#f8fafc' }}>
-                Canonical Event Payload
-              </h3>
-            </div>
-            <button
-              onClick={() => normEvent && copyJson(normEvent)}
-              className="btn-cyber btn-cyber-secondary"
-              style={{ padding: '4px 10px', fontSize: '0.72rem' }}
-            >
-              {copied ? <Check size={12} color="#10b981" /> : <Copy size={12} />}
-              <span>Copy JSON</span>
-            </button>
-          </div>
-
-          <div className="code-box" style={{ flex: 1, maxHeight: '420px', overflowY: 'auto' }}>
-            {normEvent ? JSON.stringify(normEvent, null, 2) : 'No normalized event in current pipeline.'}
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
 
       </div>

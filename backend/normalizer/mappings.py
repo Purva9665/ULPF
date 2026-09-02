@@ -172,3 +172,61 @@ FIELD_ALIASES: Dict[str, List[str]] = {
         "observer_hostname", "hostname", "devname", "device_name", "host"
     ],
 }
+
+
+# ---------------------------------------------------------------------------
+# Vendor status-code tables
+#
+# Several devices never emit a literal action word - they emit a numeric
+# message ID or a connection-state code and expect the consumer to know the
+# meaning. Without these tables the canonical action stays UNKNOWN and every
+# downstream decision (routing, classification, correlation) loses its
+# strongest signal.
+# ---------------------------------------------------------------------------
+
+#: Cisco ASA syslog mnemonic -> canonical action.
+#: Reference: Cisco ASA Series Syslog Messages guide.
+ASA_MNEMONIC_ACTION = {
+    "106001": ActionEnum.DENY,    # Inbound TCP connection denied
+    "106006": ActionEnum.DENY,    # Deny inbound UDP
+    "106007": ActionEnum.DENY,    # Deny inbound UDP, DNS response
+    "106010": ActionEnum.DENY,    # Deny inbound protocol
+    "106014": ActionEnum.DENY,    # Deny inbound ICMP
+    "106015": ActionEnum.DENY,    # Deny TCP (no connection)
+    "106016": ActionEnum.DENY,    # Deny IP spoof
+    "106017": ActionEnum.DENY,    # Deny IP due to Land Attack
+    "106021": ActionEnum.DENY,    # Deny reverse path check
+    "106023": ActionEnum.DENY,    # Deny by access-group
+    "106100": ActionEnum.UNKNOWN, # permitted OR denied - text decides
+    "302013": ActionEnum.ALLOW,   # Built inbound TCP connection
+    "302014": ActionEnum.ALLOW,   # Teardown TCP connection
+    "302015": ActionEnum.ALLOW,   # Built UDP connection
+    "302016": ActionEnum.ALLOW,   # Teardown UDP connection
+    "302020": ActionEnum.ALLOW,   # Built ICMP connection
+    "302021": ActionEnum.ALLOW,   # Teardown ICMP connection
+    "313001": ActionEnum.DENY,    # Denied ICMP type
+    "313008": ActionEnum.DENY,    # Denied ICMPv6 type
+    "710003": ActionEnum.DENY,    # Access denied to device service
+    "733100": ActionEnum.ALERT,   # Threat detection rate exceeded
+}
+
+#: Zeek conn.log conn_state -> (canonical action, human meaning).
+#: Reference: Zeek base/protocols/conn documentation.
+ZEEK_CONN_STATE = {
+    "S0":     (ActionEnum.DROP,   "Connection attempt seen, no reply"),
+    "S1":     (ActionEnum.ALLOW,  "Connection established, not terminated"),
+    "SF":     (ActionEnum.ALLOW,  "Normal establishment and termination"),
+    "REJ":    (ActionEnum.REJECT, "Connection attempt rejected"),
+    "S2":     (ActionEnum.ALLOW,  "Established, originator close attempt only"),
+    "S3":     (ActionEnum.ALLOW,  "Established, responder close attempt only"),
+    "RSTO":   (ActionEnum.RESET,  "Established, originator aborted"),
+    "RSTR":   (ActionEnum.RESET,  "Established, responder aborted"),
+    "RSTOS0": (ActionEnum.RESET,  "Originator SYN then RST, no responder SYN-ACK"),
+    "RSTRH":  (ActionEnum.RESET,  "Responder SYN-ACK then RST, no originator SYN"),
+    "SH":     (ActionEnum.DROP,   "Originator SYN then FIN, no responder SYN-ACK"),
+    "SHR":    (ActionEnum.DROP,   "Responder SYN-ACK then FIN, no originator SYN"),
+    "OTH":    (ActionEnum.UNKNOWN, "No SYN seen, midstream traffic"),
+}
+
+#: Zeek conn_states that indicate scanning behaviour when seen from one source.
+ZEEK_SCAN_STATES = frozenset({"S0", "REJ", "RSTOS0", "SH"})

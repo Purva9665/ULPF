@@ -4,14 +4,22 @@
 
 import type { SampleLog, PipelineContext, EngineStats, ExportSchemas } from './types';
 
+/**
+ * Backend port. Defaults to 8000; override with VITE_API_PORT when the
+ * backend runs elsewhere (a busy port, or a container publishing a different
+ * one). Keeping this configurable avoids hardcoding a port into the bundle.
+ */
+const API_PORT = (import.meta as any).env?.VITE_API_PORT || '8000';
+
 const getApiBase = () => {
   if (typeof window !== 'undefined' && window.location) {
+    if (window.location.port === API_PORT) return window.location.origin;
     if (window.location.port === '8000' || window.location.port === '') {
       return window.location.origin;
     }
-    return `${window.location.protocol}//${window.location.hostname}:8000`;
+    return `${window.location.protocol}//${window.location.hostname}:${API_PORT}`;
   }
-  return 'http://localhost:8000';
+  return `http://localhost:${API_PORT}`;
 };
 
 const getWsBase = () => {
@@ -20,13 +28,19 @@ const getWsBase = () => {
     if (window.location.port === '8000' || window.location.port === '') {
       return `${proto}//${window.location.host}`;
     }
-    return `${proto}//${window.location.hostname}:8000`;
+    return `${proto}//${window.location.hostname}:${API_PORT}`;
   }
-  return 'ws://localhost:8000';
+  return `ws://localhost:${API_PORT}`;
 };
 
-const API_BASE = getApiBase();
-const WS_BASE = getWsBase();
+export const API_BASE = getApiBase();
+export const WS_BASE = getWsBase();
+
+export async function fetchExports(eventId?: string): Promise<ExportSchemas> {
+  const url = eventId ? `${API_BASE}/api/events/${eventId}/export` : `${API_BASE}/api/exports`;
+  const res = await fetch(url);
+  return res.json();
+}
 
 export async function fetchHealth() {
   const res = await fetch(`${API_BASE}/api/health`);
@@ -48,8 +62,50 @@ export async function fetchStats(): Promise<EngineStats> {
   return res.json();
 }
 
-export async function fetchStoredEvents(limit = 50, offset = 0) {
-  const res = await fetch(`${API_BASE}/api/events?limit=${limit}&offset=${offset}`);
+export async function fetchStoredEvents(
+  limitOrOptions?: number | {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    action?: string;
+    severity?: string;
+    vendor?: string;
+    isAnomalous?: boolean;
+  },
+  maybeOffset?: number
+) {
+  let opts: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    action?: string;
+    severity?: string;
+    vendor?: string;
+    isAnomalous?: boolean;
+  } = {};
+
+  if (typeof limitOrOptions === 'number') {
+    opts.limit = limitOrOptions;
+    opts.offset = maybeOffset ?? 0;
+  } else if (limitOrOptions && typeof limitOrOptions === 'object') {
+    opts = limitOrOptions;
+  }
+
+  const params = new URLSearchParams();
+  params.set('limit', String(opts.limit ?? 50));
+  params.set('offset', String(opts.offset ?? 0));
+  if (opts.search) params.set('search', opts.search);
+  if (opts.action && opts.action !== 'ALL') params.set('action', opts.action);
+  if (opts.severity && opts.severity !== 'ALL') params.set('severity', opts.severity);
+  if (opts.vendor && opts.vendor !== 'ALL') params.set('vendor', opts.vendor);
+  if (opts.isAnomalous !== undefined) params.set('is_anomalous', opts.isAnomalous ? '1' : '0');
+
+  const res = await fetch(`${API_BASE}/api/events?${params.toString()}`);
+  return res.json();
+}
+
+export async function fetchAnalytics() {
+  const res = await fetch(`${API_BASE}/api/analytics`);
   return res.json();
 }
 

@@ -2,37 +2,32 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { 
   StageEnum, 
   PipelineContext, 
-  SampleLog, 
   EngineStats, 
-  ExportSchemas,
-  TimelineItem,
-  ULPFRawEvent,
-  RawPayload,
+  SampleLog, 
+  ExportSchemas 
 } from './types';
 import { 
-  fetchSamples, 
   fetchStats, 
-  fetchStoredEvents,
+  fetchSamples, 
+  fetchExports, 
   fetchEventDetail,
-  processEventSync, 
-  streamSingleEvent, 
-  stepPipelineStage, 
-  controlLiveStream, 
-  connectWebSocket 
+  streamSingleEvent,
+  stepPipelineStage,
+  controlLiveStream,
+  connectWebSocket,
+  processEventSync
 } from './api';
-import { Header } from './components/Header';
-import { LeftSidebarScoreCard } from './components/LeftSidebarScoreCard';
-import { MainLivePipeline } from './components/MainLivePipeline';
-import { CurrentEventCard } from './components/CurrentEventCard';
-import { LiveActivityTimeline } from './components/LiveActivityTimeline';
-import { SystemHealthCard } from './components/SystemHealthCard';
-import { ProcessingMetricsGrid } from './components/ProcessingMetricsGrid';
-import { RecentEventsTable } from './components/RecentEventsTable';
+
+// Reusable Application Shell Components
+import { Sidebar } from './components/Sidebar';
+import { TopBar } from './components/TopBar';
 import { TestBenchModal } from './components/TestBenchModal';
 import { HistoryDrawer } from './components/HistoryDrawer';
 import { ExportViewerModal } from './components/ExportViewerModal';
 
-// Phase 2 Detailed Processing Stage Views
+// Redesigned Workspaces & Views
+import { DashboardView } from './views/DashboardView';
+import { DemoView } from './views/DemoView';
 import { IngestionView } from './views/IngestionView';
 import { ParserView } from './views/ParserView';
 import { NormalizationView } from './views/NormalizationView';
@@ -40,11 +35,13 @@ import { ValidationView } from './views/ValidationView';
 import { StorageView } from './views/StorageView';
 import { MLView } from './views/MLView';
 import { ExportView } from './views/ExportView';
+import { AnalyticsView } from './views/AnalyticsView';
+import { LogExplorerView } from './views/LogExplorerView';
 import { EventJourneyView } from './views/EventJourneyView';
 
 export const App: React.FC = () => {
-  // Navigation: 'overview' | 'ingestion' | 'parser' | 'normalization' | 'validation' | 'storage' | 'ml' | 'export' | 'journey'
-  const [activeTab, setActiveTab] = useState<string>('overview');
+  // Navigation: 'overview' | 'ingestion' | 'parser' | 'normalization' | 'validation' | 'storage' | 'ml' | 'export' | 'analytics' | 'explorer' | 'journey'
+  const [activeTab, setActiveTab] = useState<string>('demo');
 
   // Mode & Streaming State
   const [mode, setMode] = useState<'STREAM' | 'DEBUG'>('STREAM');
@@ -59,556 +56,472 @@ export const App: React.FC = () => {
   const [exports, setExports] = useState<ExportSchemas | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Live Activity Timeline
-  const [timelineItems, setTimelineItems] = useState<TimelineItem[]>([]);
-
-  // Recent Stored Events
-  const [recentEvents, setRecentEvents] = useState<any[]>([]);
-
-  // Metadata & Stats
+  // Stats & Real Database Telemetry
+  const [stats, setStats] = useState<EngineStats | null>(null);
   const [samples, setSamples] = useState<SampleLog[]>([]);
   const [selectedSampleId, setSelectedSampleId] = useState<string>('cisco_asa_smb_sweep');
-  const [stats, setStats] = useState<EngineStats | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
 
   // Modals
   const [isTestBenchOpen, setIsTestBenchOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [isExportsOpen, setIsExportsOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
+  // Connection State
+  const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
-
-  // Sequence for Step Debugger
-  const STAGE_ORDER: StageEnum[] = ['INGEST', 'PARSE', 'NORMALIZE', 'VALIDATE', 'STORE', 'ML', 'STANDARDIZED'];
-
-  // Format local timestamp with ms
-  const formatTime = () => {
-    const d = new Date();
-    return d.toTimeString().split(' ')[0] + '.' + String(d.getMilliseconds()).padStart(3, '0');
-  };
 
   // Initial Data Fetch
   useEffect(() => {
-    const init = async () => {
+    const loadInitial = async () => {
       try {
-        const [sampleList, initialStats, storedList] = await Promise.all([
-          fetchSamples(),
+        const [statsData, samplesData] = await Promise.all([
           fetchStats(),
-          fetchStoredEvents(15, 0),
+          fetchSamples(),
         ]);
-        setSamples(sampleList);
-        setStats(initialStats);
-        setRecentEvents(storedList);
-
-        if (sampleList.length > 0) {
-          setSelectedSampleId(sampleList[0].id);
-          // Run initial sample synchronously to populate dashboard state immediately
-          const initialRes = await processEventSync(sampleList[0].raw);
-          setContext(initialRes.context);
-          setExports(initialRes.exports);
-          
-          // Add initial timeline item
-          setTimelineItems([
-            {
-              id: 'init-1',
-              eventId: initialRes.context.event_id,
-              stage: 'STANDARDIZED',
-              status: 'COMPLETED',
-              timestamp: formatTime(),
-              title: `Pipeline Ready • ${sampleList[0].title}`,
-              subtitle: `Parsed with ${initialRes.context.parsed_event?.parser_name || 'cisco_asa'} • DQI 100%`,
-            }
-          ]);
+        setStats(statsData);
+        setSamples(samplesData);
+        if (samplesData.length > 0) {
+          setSelectedSampleId(samplesData[0].id);
         }
       } catch (err) {
-        console.error('Failed to initialize ULPF engine state', err);
+        console.error('Failed to load initial engine data', err);
       }
     };
-    init();
+    loadInitial();
+  }, []);
 
-    // Setup Live WebSocket Connection to Backend Engine
+  // WebSocket Connection
+  useEffect(() => {
     const ws = connectWebSocket(
-      (data) => {
-        if (data.type === 'CONNECTION_ESTABLISHED') {
-          setIsConnected(true);
-          if (data.stats) {
-            setStats((prev) => (prev ? { ...prev, storage: data.stats } : prev));
-          }
-        } else if (data.type === 'STAGE_TRANSITION') {
-          setActiveTransitionStage(data.stage);
-          setSelectedStage(data.stage);
-
-          // Update context with intermediate stage transition
-          setContext((prev) => {
-            if (!prev || prev.event_id !== data.event_id) {
-              return {
-                event_id: data.event_id,
-                current_stage: data.stage,
-                stages_completed: [data.stage],
-                stage_metrics: [data.metric],
-                total_duration_us: 0,
-                is_completed: false,
-                ...(data.snapshot || {}),
-              };
-            }
-            const completed = prev.stages_completed.includes(data.stage)
-              ? prev.stages_completed
-              : [...prev.stages_completed, data.stage];
-            const metrics = [...prev.stage_metrics.filter((m) => m.stage !== data.stage), data.metric];
-
-            return {
-              ...prev,
-              current_stage: data.stage,
-              stages_completed: completed,
-              stage_metrics: metrics,
-              ...(data.snapshot || {}),
-            };
-          });
-
-          // Append to Live Activity Timeline
-          const newItem: TimelineItem = {
-            id: `tl-${Date.now()}-${Math.random()}`,
-            eventId: data.event_id,
-            stage: data.stage,
-            status: data.status || 'COMPLETED',
-            timestamp: formatTime(),
-            title: data.metric?.message || `Executed Stage ${data.stage}`,
-            subtitle: `Latency: ${data.metric?.duration_us || 0} µs`,
-            metric: data.metric,
-            snapshot: data.snapshot,
-          };
-
-          setTimelineItems((prev) => [newItem, ...prev.slice(0, 49)]);
-
-        } else if (data.type === 'EVENT_COMPLETED') {
-          setActiveTransitionStage(null);
-          setContext(data.context);
-          setExports(data.exports);
-          setSelectedStage('STANDARDIZED');
-
-          // Append completion to Live Activity Timeline
-          const completedItem: TimelineItem = {
-            id: `tl-comp-${Date.now()}`,
-            eventId: data.event_id,
-            stage: 'STANDARDIZED',
-            status: 'COMPLETED',
-            timestamp: formatTime(),
-            title: `Event ${data.event_id.slice(0, 8)}... Fully Standardized`,
-            subtitle: `End-to-End Latency: ${data.context.total_duration_us} µs • SIEM Exporters Generated`,
-          };
-          setTimelineItems((prev) => [completedItem, ...prev.slice(0, 49)]);
-
-          // Refresh stats and recent stored records
-          fetchStats().then((s) => setStats(s)).catch(() => {});
-          fetchStoredEvents(15, 0).then((evs) => setRecentEvents(evs)).catch(() => {});
-        }
+      (msg) => {
+        handleWebSocketMessage(msg);
       },
       () => setIsConnected(true),
       () => setIsConnected(false),
-      () => setIsConnected(false)
+      (err) => console.error('WS Error:', err)
     );
-
     wsRef.current = ws;
 
     return () => {
-      ws.close();
+      if (wsRef.current) wsRef.current.close();
     };
   }, []);
 
-  // Handler: Select Sample Preset
-  const handleSelectSample = (sampleId: string) => {
-    setSelectedSampleId(sampleId);
-    const sample = samples.find((s) => s.id === sampleId);
-    if (!sample) return;
-
-    if (mode === 'STREAM') {
-      streamSingleEvent(sample.raw, stageDelayMs);
-    } else {
-      // In debug mode, reset context to Stage 1 INGEST
-      const rawPayload: RawPayload = {
-        payload: sample.raw,
-        sha256_hash: '',
-        encoding: 'UTF-8',
-        length_bytes: sample.raw.length,
-        source_protocol: 'SYSLOG_UDP',
-      };
-      const rawEv: ULPFRawEvent = {
-        event_id: 'debug-' + Date.now(),
-        ingested_at: new Date().toISOString(),
-        raw: rawPayload,
-        source_metadata: { title: sample.title },
-      };
-      setContext({
-        event_id: rawEv.event_id,
-        current_stage: 'INGEST',
-        stages_completed: ['INGEST'],
-        stage_metrics: [],
-        raw_event: rawEv,
-        total_duration_us: 0,
-        is_completed: false,
-      });
-      setSelectedStage('INGEST');
+  // Handle incoming WebSocket messages
+  const handleWebSocketMessage = (msg: any) => {
+    if (msg.type === 'STAGE_TRANSITION') {
+      if (msg.stage) {
+        setActiveTransitionStage(msg.stage);
+        setSelectedStage(msg.stage);
+      }
+      if (msg.context) {
+        setContext(msg.context);
+      }
+    } else if (msg.type === 'EVENT_COMPLETED') {
+      setActiveTransitionStage(null);
+      if (msg.context) {
+        setContext(msg.context);
+      }
+      if (msg.stats) {
+        setStats(msg.stats);
+      }
+      if (msg.exports) {
+        setExports(msg.exports);
+      }
+      setIsProcessing(false);
+    } else if (msg.type === 'STATS_UPDATE') {
+      if (msg.stats) {
+        setStats(msg.stats);
+      }
     }
   };
 
-  // Handler: Toggle Continuous Live Streaming
-  const handleToggleStream = async () => {
-    const nextStreaming = !isStreaming;
-    setIsStreaming(nextStreaming);
+  const getActiveSampleRaw = () => {
+    const s = samples.find((x) => x.id === selectedSampleId);
+    return s ? s.raw : "%ASA-4-106023: Deny tcp src outside:198.51.100.99/50123 dst inside:10.0.0.5/445 by access-group 'OUTSIDE-IN' [0x0, 0x0]";
+  };
+
+  // Actions
+  const handleTriggerSingle = async () => {
+    setIsProcessing(true);
     try {
-      await controlLiveStream(nextStreaming ? 'start' : 'stop', eps, stageDelayMs);
+      const raw = getActiveSampleRaw();
+      const res = await streamSingleEvent(raw, stageDelayMs);
+      if (res.context) {
+        setContext(res.context);
+        const exportsData = await fetchExports(res.context.event_id);
+        setExports(exportsData);
+      }
+      const updatedStats = await fetchStats();
+      setStats(updatedStats);
     } catch (err) {
-      console.error('Failed to control live stream', err);
+      console.error('Single event error', err);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  // Handler: Update EPS
+  const handleToggleStream = async () => {
+    const nextState = !isStreaming;
+    setIsStreaming(nextState);
+    try {
+      await controlLiveStream(nextState ? 'start' : 'stop', eps, stageDelayMs);
+    } catch (err) {
+      console.error('Stream toggle error', err);
+      setIsStreaming(!nextState);
+    }
+  };
+
   const handleSetEps = async (newEps: number) => {
     setEps(newEps);
     if (isStreaming) {
-      await controlLiveStream('set_eps', newEps, stageDelayMs);
+      try {
+        await controlLiveStream('set_eps', newEps, stageDelayMs);
+      } catch (err) {
+        console.error('Set EPS error', err);
+      }
     }
   };
 
-  // Handler: Trigger Single Event
-  const handleTriggerSingleEvent = async () => {
-    const sample = samples.find((s) => s.id === selectedSampleId) || samples[0];
-    if (!sample) return;
-    setIsProcessing(true);
-    try {
-      await streamSingleEvent(sample.raw, stageDelayMs);
-    } catch (err) {
-      console.error('Failed to trigger single event', err);
-    } finally {
-      setIsProcessing(false);
+  const ALL_STAGES: StageEnum[] = ['INGEST', 'PARSE', 'NORMALIZE', 'VALIDATE', 'STORE', 'ML', 'STANDARDIZED'];
+
+  const handleSetMode = (newMode: 'STREAM' | 'DEBUG') => {
+    setMode(newMode);
+    if (newMode === 'DEBUG') {
+      if (isStreaming) {
+        setIsStreaming(false);
+        controlLiveStream('stop').catch(() => {});
+      }
     }
   };
 
-  // Step Debugger: Advance exactly 1 stage
   const handleStepForward = async () => {
-    if (!context) return;
-    const currentIdx = STAGE_ORDER.indexOf(context.current_stage);
-    if (currentIdx < 0 || currentIdx >= STAGE_ORDER.length - 1) return;
-
-    const nextStage = STAGE_ORDER[currentIdx + 1];
     setIsProcessing(true);
     try {
-      const res = await stepPipelineStage(context, nextStage);
-      setContext(res.context);
-      setSelectedStage(nextStage);
+      const raw = getActiveSampleRaw();
+
+      // Case 1: Start a new event stepping at Stage 01: INGEST ONLY
+      if (!context || context.is_completed || !context.stages_completed || context.stages_completed.length === 0) {
+        const eventId = typeof crypto !== 'undefined' && crypto.randomUUID 
+          ? crypto.randomUUID() 
+          : 'evt_' + Math.random().toString(36).substring(2, 10);
+        
+        let sha256Hex = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+        if (typeof crypto !== 'undefined' && crypto.subtle) {
+          try {
+            const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
+            sha256Hex = Array.from(new Uint8Array(buf))
+              .map((b) => b.toString(16).padStart(2, '0'))
+              .join('');
+          } catch (e) {
+            // fallback
+          }
+        }
+
+        const rawLength = new TextEncoder().encode(raw).length;
+
+        const initialIngestContext: PipelineContext = {
+          event_id: eventId,
+          current_stage: 'INGEST',
+          stages_completed: ['INGEST'],
+          raw_event: {
+            event_id: eventId,
+            ingested_at: new Date().toISOString(),
+            raw: {
+              payload: raw,
+              sha256_hash: sha256Hex,
+              encoding: 'UTF-8',
+              length_bytes: rawLength,
+              source_protocol: 'SYSLOG_UDP',
+            },
+            source_metadata: {},
+          },
+          stage_metrics: [
+            {
+              stage: 'INGEST',
+              status: 'COMPLETED',
+              start_time_us: 0,
+              duration_us: 18,
+              message: `Ingested ${rawLength} bytes with SHA-256 cryptographic digest`,
+              details: { length: rawLength, protocol: 'SYSLOG_UDP', sha256: sha256Hex },
+            },
+          ],
+          total_duration_us: 18,
+          is_completed: false,
+        };
+
+        setContext(initialIngestContext);
+        setSelectedStage('INGEST');
+        setExports(null);
+      } else {
+        // Case 2: Advance to the NEXT single stage in sequence
+        const completed = context.stages_completed || [];
+        const completedCount = completed.length;
+
+        if (completedCount < ALL_STAGES.length) {
+          const nextStage = ALL_STAGES[completedCount];
+          const res = await stepPipelineStage(context, nextStage);
+          
+          if (res && res.context) {
+            setContext(res.context);
+            setSelectedStage(nextStage);
+
+            // If final stage reached, load exports
+            if (nextStage === 'STANDARDIZED' || res.context.is_completed) {
+              try {
+                const exp = await fetchExports(res.context.event_id);
+                setExports(exp);
+              } catch (e) {
+                // ignore
+              }
+            }
+          }
+        }
+      }
+
+      const updatedStats = await fetchStats();
+      setStats(updatedStats);
     } catch (err) {
-      console.error('Step execution error', err);
+      console.error('Step forward error', err);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // Step Debugger: Fast-forward to end
   const handleFastForward = async () => {
-    const sample = samples.find((s) => s.id === selectedSampleId) || samples[0];
-    if (!sample) return;
     setIsProcessing(true);
     try {
-      const res = await processEventSync(sample.raw);
+      const raw = getActiveSampleRaw();
+      const res = await processEventSync(raw);
       setContext(res.context);
       setExports(res.exports);
       setSelectedStage('STANDARDIZED');
-      fetchStats().then((s) => setStats(s)).catch(() => {});
-      fetchStoredEvents(15, 0).then((evs) => setRecentEvents(evs)).catch(() => {});
+      const updatedStats = await fetchStats();
+      setStats(updatedStats);
     } catch (err) {
-      console.error('Fast-forward execution error', err);
+      console.error('Fast forward error', err);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // Step Debugger: Reset Stepper
-  const handleResetStepper = () => {
-    const sample = samples.find((s) => s.id === selectedSampleId) || samples[0];
-    if (!sample) return;
-    const rawPayload: RawPayload = {
-      payload: sample.raw,
-      sha256_hash: '',
-      encoding: 'UTF-8',
-      length_bytes: sample.raw.length,
-      source_protocol: 'SYSLOG_UDP',
-    };
-    const rawEv: ULPFRawEvent = {
-      event_id: 'debug-' + Date.now(),
-      ingested_at: new Date().toISOString(),
-      raw: rawPayload,
-      source_metadata: { title: sample.title },
-    };
-    setContext({
-      event_id: rawEv.event_id,
-      current_stage: 'INGEST',
-      stages_completed: ['INGEST'],
-      stage_metrics: [],
-      raw_event: rawEv,
-      total_duration_us: 0,
-      is_completed: false,
-    });
+  const handleReset = async () => {
+    setContext(null);
     setSelectedStage('INGEST');
+    setExports(null);
+    try {
+      const updatedStats = await fetchStats();
+      setStats(updatedStats);
+    } catch (err) {
+      console.error('Reset error', err);
+    }
   };
 
-  // Inspect Event from Table or Timeline
   const handleInspectEventById = async (eventId: string) => {
     try {
       const detail = await fetchEventDetail(eventId);
-      if (detail) {
-        if (detail.raw_event || detail.current_stage) {
-          setContext(detail);
-        } else {
-          const rawPayload: RawPayload = {
-            payload: detail.raw_payload || '',
-            sha256_hash: detail.raw_sha256 || '',
-            encoding: 'UTF-8',
-            length_bytes: detail.raw_length_bytes || 0,
-            source_protocol: detail.protocol || 'SYSLOG_UDP',
-          };
-          setContext({
-            event_id: detail.event_id,
-            current_stage: 'STANDARDIZED',
-            stages_completed: ['INGEST', 'PARSE', 'NORMALIZE', 'VALIDATE', 'STORE', 'ML', 'STANDARDIZED'],
-            stage_metrics: [],
-            raw_event: {
-              event_id: detail.event_id,
-              ingested_at: detail.ingested_at || new Date().toISOString(),
-              raw: rawPayload,
-              source_metadata: {},
-            },
-            total_duration_us: 380,
-            is_completed: true,
-          });
-        }
+      if (detail && detail.pipeline_context) {
+        setContext(detail.pipeline_context);
       }
     } catch (err) {
       console.error('Failed to load event detail', err);
     }
   };
 
-  const canStep = context ? STAGE_ORDER.indexOf(context.current_stage) < STAGE_ORDER.length - 1 : false;
+  const canStepForward = !context || (context.stages_completed?.length || 0) < 7 || context.is_completed;
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg-primary)' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-app)' }}>
       
-      {/* 1. UNIVERSAL ENTERPRISE HEADER */}
-      <Header
-        stats={stats}
-        isConnected={isConnected}
+      {/* 1. Sleek Left Sidebar Navigation */}
+      <Sidebar
         activeTab={activeTab}
         onSelectTab={setActiveTab}
+        stats={stats}
+        isConnected={isConnected}
         onOpenTestBench={() => setIsTestBenchOpen(true)}
         onOpenHistory={() => setIsHistoryOpen(true)}
-        onOpenExports={() => setIsExportsOpen(true)}
+        onOpenExports={() => setIsExportModalOpen(true)}
       />
 
-      {/* Main Container */}
-      <main style={{ flex: 1, padding: '16px 20px 32px 20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* 2. Main Content Container with Sticky TopBar */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         
-        {/* ======================================================== */}
-        {/* ROUTE 1: MAIN CONTROL ROOM OVERVIEW                      */}
-        {/* ======================================================== */}
-        {activeTab === 'overview' && (
-          <>
-            {/* TOP ROW: LEFT SIDEBAR + MAIN LIVE PIPELINE + LIVE TIMELINE */}
-            <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr 340px', gap: '20px', alignItems: 'stretch' }}>
-              
-              {/* Left Column: Greeting Banner + Quality/DQI Score Card */}
-              <LeftSidebarScoreCard
-                stats={stats}
-                onOpenTestBench={() => setIsTestBenchOpen(true)}
-              />
+        <TopBar
+          activeTab={activeTab}
+          onSelectTab={setActiveTab}
+          stats={stats}
+          isConnected={isConnected}
+          onOpenTestBench={() => setIsTestBenchOpen(true)}
+          onOpenHistory={() => setIsHistoryOpen(true)}
+          onOpenExports={() => setIsExportModalOpen(true)}
+        />
 
-              {/* Center Column: MAIN LIVE PIPELINE CENTERPIECE */}
-              <MainLivePipeline
-                context={context}
-                selectedStage={selectedStage}
-                onSelectStage={(st) => {
-                  setSelectedStage(st);
-                  // Quick shortcut to jump into that specific stage dashboard
-                  if (st === 'INGEST') setActiveTab('ingestion');
-                  else if (st === 'PARSE') setActiveTab('parser');
-                  else if (st === 'NORMALIZE') setActiveTab('normalization');
-                  else if (st === 'VALIDATE') setActiveTab('validation');
-                  else if (st === 'STORE') setActiveTab('storage');
-                  else if (st === 'ML') setActiveTab('ml');
-                  else if (st === 'STANDARDIZED') setActiveTab('export');
-                }}
-                activeTransitionStage={activeTransitionStage}
-                mode={mode}
-                onSetMode={setMode}
-                isStreaming={isStreaming}
-                onToggleStream={handleToggleStream}
-                eps={eps}
-                onSetEps={handleSetEps}
-                samples={samples}
-                selectedSampleId={selectedSampleId}
-                onSelectSample={handleSelectSample}
-                onTriggerSingleEvent={handleTriggerSingleEvent}
-                onStepForward={handleStepForward}
-                onResetStepper={handleResetStepper}
-                onFastForward={handleFastForward}
-                canStepForward={canStep}
-                isProcessing={isProcessing}
-              />
+        <main style={{ padding: '24px 28px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+          
+          {/* OVERVIEW / DASHBOARD */}
+          {activeTab === 'demo' && <DemoView />}
 
-              {/* Right Column: LIVE ACTIVITY TIMELINE */}
-              <LiveActivityTimeline
-                items={timelineItems}
-                onSelectItem={(item) => handleInspectEventById(item.eventId)}
-                onClear={() => setTimelineItems([])}
-                onOpenHistory={() => setIsHistoryOpen(true)}
-              />
-
-            </div>
-
-            {/* MIDDLE ROW: CURRENT EVENT FOCUS CARD */}
-            <CurrentEventCard
+          {activeTab === 'overview' && (
+            <DashboardView
               context={context}
+              stats={stats}
+              selectedStage={selectedStage}
+              onSelectStage={setSelectedStage}
+              activeTransitionStage={activeTransitionStage}
+              mode={mode}
+              onSetMode={handleSetMode}
+              isStreaming={isStreaming}
+              onToggleStream={handleToggleStream}
+              eps={eps}
+              onSetEps={handleSetEps}
+              samples={samples}
+              selectedSampleId={selectedSampleId}
+              onSelectSample={setSelectedSampleId}
+              onTriggerSingleEvent={handleTriggerSingle}
+              onStepForward={handleStepForward}
+              onResetStepper={handleReset}
+              onFastForward={handleFastForward}
+              canStepForward={canStepForward}
+              isProcessing={isProcessing}
+              onInspectEvent={handleInspectEventById}
+              onGoToStage={setActiveTab}
+              onGoToJourney={(eventId) => {
+                handleInspectEventById(eventId);
+                setActiveTab('journey');
+              }}
+            />
+          )}
+
+          {/* STAGE 01: INGESTION */}
+          {activeTab === 'ingestion' && (
+            <IngestionView
+              context={context}
+              stats={stats}
+              onBackToOverview={() => setActiveTab('overview')}
+              onRunCustomIngest={async (raw) => {
+                setIsProcessing(true);
+                try {
+                  const res = await processEventSync(raw);
+                  if (res.context) setContext(res.context);
+                  if (res.exports) setExports(res.exports);
+                  const updatedStats = await fetchStats();
+                  setStats(updatedStats);
+                } catch (e) {
+                  console.error(e);
+                } finally {
+                  setIsProcessing(false);
+                }
+              }}
+              samples={samples}
+            />
+          )}
+
+          {/* STAGE 02: PARSER */}
+          {activeTab === 'parser' && (
+            <ParserView
+              context={context}
+              stats={stats}
+              onBackToOverview={() => setActiveTab('overview')}
+              onSelectSample={(sampleId) => {
+                setSelectedSampleId(sampleId);
+                handleTriggerSingle();
+              }}
+              samples={samples}
+            />
+          )}
+
+          {/* STAGE 03: NORMALIZATION */}
+          {activeTab === 'normalization' && (
+            <NormalizationView
+              context={context}
+              stats={stats}
+              onBackToOverview={() => setActiveTab('overview')}
+            />
+          )}
+
+          {/* STAGE 04: VALIDATION / DQI */}
+          {activeTab === 'validation' && (
+            <ValidationView
+              context={context}
+              stats={stats}
+              onBackToOverview={() => setActiveTab('overview')}
+            />
+          )}
+
+          {/* STAGE 05: STORAGE (SQLITE WAL) */}
+          {activeTab === 'storage' && (
+            <StorageView
+              context={context}
+              stats={stats}
+              onBackToOverview={() => setActiveTab('overview')}
+              onSelectEventId={handleInspectEventById}
+            />
+          )}
+
+          {/* STAGE 06: ML ANOMALY & ENTROPY */}
+          {activeTab === 'ml' && (
+            <MLView
+              context={context}
+              stats={stats}
+              onBackToOverview={() => setActiveTab('overview')}
+            />
+          )}
+
+          {/* STAGE 07: EXPORT */}
+          {activeTab === 'export' && (
+            <ExportView
+              context={context}
+              stats={stats}
               exports={exports}
+              onBackToOverview={() => setActiveTab('overview')}
             />
+          )}
 
-            {/* BOTTOM ROW: SYSTEM HEALTH + PROCESSING METRICS */}
-            <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '20px' }}>
-              <SystemHealthCard
-                stats={stats}
-                isConnected={isConnected}
-              />
-
-              <ProcessingMetricsGrid
-                stats={stats}
-              />
-            </div>
-
-            {/* 7. RECENT EVENTS TABLE (SQLite WAL Database Journal) */}
-            <RecentEventsTable
-              events={recentEvents}
-              onSelectEvent={handleInspectEventById}
-              onOpenHistory={() => setIsHistoryOpen(true)}
+          {/* ANALYTICS VIEW */}
+          {activeTab === 'analytics' && (
+            <AnalyticsView
+              stats={stats}
+              onBackToOverview={() => setActiveTab('overview')}
             />
-          </>
-        )}
+          )}
 
-        {/* ======================================================== */}
-        {/* ROUTE 2: STAGE 01 — INGESTION DASHBOARD                  */}
-        {/* ======================================================== */}
-        {activeTab === 'ingestion' && (
-          <IngestionView
-            context={context}
-            stats={stats}
-            onBackToOverview={() => setActiveTab('overview')}
-            onRunCustomIngest={async (rawText) => {
-              setIsProcessing(true);
-              try {
-                const res = await processEventSync(rawText);
-                setContext(res.context);
-                setExports(res.exports);
-                fetchStats().then((s) => setStats(s)).catch(() => {});
-                fetchStoredEvents(15, 0).then((evs) => setRecentEvents(evs)).catch(() => {});
-              } catch (err) {
-                console.error('Ingestion error', err);
-              } finally {
-                setIsProcessing(false);
-              }
-            }}
-            samples={samples}
-          />
-        )}
+          {/* LOG EXPLORER VIEW */}
+          {activeTab === 'explorer' && (
+            <LogExplorerView
+              stats={stats}
+              onBackToOverview={() => setActiveTab('overview')}
+              onInspectEvent={handleInspectEventById}
+              onGoToJourney={(eventId) => {
+                handleInspectEventById(eventId);
+                setActiveTab('journey');
+              }}
+            />
+          )}
 
-        {/* ======================================================== */}
-        {/* ROUTE 3: STAGE 02 — PARSER DASHBOARD                     */}
-        {/* ======================================================== */}
-        {activeTab === 'parser' && (
-          <ParserView
-            context={context}
-            stats={stats}
-            onBackToOverview={() => setActiveTab('overview')}
-            onSelectSample={handleSelectSample}
-            samples={samples}
-          />
-        )}
+          {/* EVENT JOURNEY VIEW */}
+          {activeTab === 'journey' && (
+            <EventJourneyView
+              context={context}
+              stats={stats}
+              onBackToOverview={() => setActiveTab('overview')}
+              onSelectStage={(st) => {
+                if (st === 'INGEST') setActiveTab('ingestion');
+                else if (st === 'PARSE') setActiveTab('parser');
+                else if (st === 'NORMALIZE') setActiveTab('normalization');
+                else if (st === 'VALIDATE') setActiveTab('validation');
+                else if (st === 'STORE') setActiveTab('storage');
+                else if (st === 'ML') setActiveTab('ml');
+                else if (st === 'STANDARDIZED') setActiveTab('export');
+              }}
+            />
+          )}
 
-        {/* ======================================================== */}
-        {/* ROUTE 4: STAGE 03 — NORMALIZATION DASHBOARD (CORE ULPF)  */}
-        {/* ======================================================== */}
-        {activeTab === 'normalization' && (
-          <NormalizationView
-            context={context}
-            stats={stats}
-            onBackToOverview={() => setActiveTab('overview')}
-          />
-        )}
+        </main>
 
-        {/* ======================================================== */}
-        {/* ROUTE 5: STAGE 04 — VALIDATION DASHBOARD                 */}
-        {/* ======================================================== */}
-        {activeTab === 'validation' && (
-          <ValidationView
-            context={context}
-            stats={stats}
-            onBackToOverview={() => setActiveTab('overview')}
-          />
-        )}
+      </div>
 
-        {/* ======================================================== */}
-        {/* ROUTE 6: STAGE 05 — POSTGRESQL / STORAGE DASHBOARD       */}
-        {/* ======================================================== */}
-        {activeTab === 'storage' && (
-          <StorageView
-            context={context}
-            stats={stats}
-            onBackToOverview={() => setActiveTab('overview')}
-            onSelectEventId={handleInspectEventById}
-          />
-        )}
-
-        {/* ======================================================== */}
-        {/* ROUTE 7: STAGE 06 — ML / ANALYTICS DASHBOARD             */}
-        {/* ======================================================== */}
-        {activeTab === 'ml' && (
-          <MLView
-            context={context}
-            stats={stats}
-            onBackToOverview={() => setActiveTab('overview')}
-          />
-        )}
-
-        {/* ======================================================== */}
-        {/* ROUTE 8: STAGE 07 — EXPORT DASHBOARD                     */}
-        {/* ======================================================== */}
-        {activeTab === 'export' && (
-          <ExportView
-            context={context}
-            stats={stats}
-            exports={exports}
-            onBackToOverview={() => setActiveTab('overview')}
-          />
-        )}
-
-        {/* ======================================================== */}
-        {/* ROUTE 9: EVENT JOURNEY & TRACEABILITY DASHBOARD          */}
-        {/* ======================================================== */}
-        {activeTab === 'journey' && (
-          <EventJourneyView
-            context={context}
-            stats={stats}
-            onBackToOverview={() => setActiveTab('overview')}
-            onSelectStage={(st) => {
-              if (st === 'INGEST') setActiveTab('ingestion');
-              else if (st === 'PARSE') setActiveTab('parser');
-              else if (st === 'NORMALIZE') setActiveTab('normalization');
-              else if (st === 'VALIDATE') setActiveTab('validation');
-              else if (st === 'STORE') setActiveTab('storage');
-              else if (st === 'ML') setActiveTab('ml');
-              else if (st === 'STANDARDIZED') setActiveTab('export');
-            }}
-          />
-        )}
-
-      </main>
-
-      {/* MODALS */}
+      {/* Global Modals */}
       {isTestBenchOpen && (
         <TestBenchModal
           isOpen={isTestBenchOpen}
@@ -618,21 +531,30 @@ export const App: React.FC = () => {
             setIsTestBenchOpen(false);
             setIsProcessing(true);
             try {
-              const res = await processEventSync(rawText, explicitParser === 'auto' ? undefined : explicitParser);
-              setContext(res.context);
-              setExports(res.exports);
-              setSelectedStage('STANDARDIZED');
-              fetchStats().then((s) => setStats(s)).catch(() => {});
-              fetchStoredEvents(15, 0).then((evs) => setRecentEvents(evs)).catch(() => {});
+              const res = await processEventSync(rawText, 'HTTP_REST', {}, explicitParser);
+              if (res.context) setContext(res.context);
+              if (res.exports) setExports(res.exports);
+              const updatedStats = await fetchStats();
+              setStats(updatedStats);
             } catch (err) {
-              console.error('Test bench error', err);
+              console.error('Test Bench execution failed', err);
             } finally {
               setIsProcessing(false);
             }
           }}
-          onStreamCustom={(rawText) => {
+          onStreamCustom={async (rawText) => {
             setIsTestBenchOpen(false);
-            streamSingleEvent(rawText, stageDelayMs);
+            setIsProcessing(true);
+            try {
+              const res = await streamSingleEvent(rawText, stageDelayMs);
+              if (res.context) setContext(res.context);
+              const updatedStats = await fetchStats();
+              setStats(updatedStats);
+            } catch (err) {
+              console.error('Stream custom error', err);
+            } finally {
+              setIsProcessing(false);
+            }
           }}
         />
       )}
@@ -641,18 +563,14 @@ export const App: React.FC = () => {
         <HistoryDrawer
           isOpen={isHistoryOpen}
           onClose={() => setIsHistoryOpen(false)}
-          onSelectEvent={(eventDetails) => {
-            if (eventDetails.event_id) {
-              handleInspectEventById(eventDetails.event_id);
-            }
-          }}
+          onSelectEvent={handleInspectEventById}
         />
       )}
 
-      {isExportsOpen && (
+      {isExportModalOpen && (
         <ExportViewerModal
-          isOpen={isExportsOpen}
-          onClose={() => setIsExportsOpen(false)}
+          isOpen={isExportModalOpen}
+          onClose={() => setIsExportModalOpen(false)}
           exports={exports}
           context={context}
         />

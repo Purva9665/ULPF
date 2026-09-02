@@ -46,7 +46,7 @@ SAMPLE_LOGS: List[Dict[str, Any]] = [
         "product": "PA-5250 Next-Gen Firewall",
         "category": "BENIGN_TRAFFIC",
         "severity": "INFORMATIONAL",
-        "raw": "1,2026/09/01 01:20:00,001801000001,TRAFFIC,end,1,2026/09/01 01:20:00,10.0.2.15,8.8.8.8,0.0.0.0,0.0.0.0,ALLOW_DNS,,dns,vsys1,trust,untrust,ethernet1/2,ethernet1/1,default_syslog,2026/09/01 01:20:00,99214,1,58291,53,0,0,0x0,udp,allow,142,70,72,2,2026/09/01 01:20:00,5,any,0,891234,0x0,10.0.0.0-10.255.255.255,United States,0,1,1,aged-out",
+        "raw": "1,2026/09/01 01:20:00,001801000001,TRAFFIC,end,1,2026/09/01 01:20:00,10.0.2.15,8.8.8.8,0.0.0.0,0.0.0.0,ALLOW_DNS,,,dns,vsys1,trust,untrust,ethernet1/2,ethernet1/1,default_syslog,2026/09/01 01:20:00,99214,1,58291,53,0,0,0x0,udp,allow,142,70,72,2,2026/09/01 01:20:00,5,any,0,891234,0x0,10.0.0.0-10.255.255.255,United States,0,1,1,aged-out",
         "description": "Standard outbound UDP DNS query resolution to Google Public DNS.",
         "expected_parser": "palo_alto_panos",
     },

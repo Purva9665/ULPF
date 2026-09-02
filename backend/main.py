@@ -170,6 +170,32 @@ async def step_pipeline(req: StepRequest):
         raise HTTPException(status_code=400, detail=f"Step execution error: {str(e)}")
 
 
+@app.get("/api/events/{event_id}/export")
+async def get_event_exports(event_id: str):
+    """Export envelopes for a single processed event.
+
+    The frontend fetches these separately from /api/pipeline/process so the
+    export panel can be opened for any event still held in the pipeline
+    buffer, not only the one just submitted.
+    """
+    ctx = orchestrator.get_buffered_context(event_id)
+    if ctx is None or ctx.final_event is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No completed event {event_id} in the pipeline buffer",
+        )
+    return orchestrator.exporter_engine.export_all(ctx.final_event)
+
+
+@app.get("/api/exports")
+async def get_latest_exports():
+    """Export envelopes for the most recently completed event."""
+    for ctx in reversed(orchestrator.recent_contexts):
+        if ctx.final_event is not None:
+            return orchestrator.exporter_engine.export_all(ctx.final_event)
+    return {}
+
+
 @app.get("/api/events")
 async def get_stored_events(limit: int = 50, offset: int = 0):
     """Retrieve stored events from SQLite WAL database."""
@@ -210,7 +236,7 @@ async def get_stats():
         else 320.0
     )
     failed_count = sum(1 for c in orchestrator.recent_contexts if c.error)
-    
+
     return {
         "storage": storage_stats,
         "is_streaming": is_streaming_active,
@@ -221,6 +247,27 @@ async def get_stats():
         "total_processed": storage_stats.get("total_events", 0),
         "failed_count": failed_count,
     }
+
+
+@app.get("/api/routing-stats")
+async def get_routing_stats():
+    """
+    SIEM vs Data Lake routing statistics.
+    Shows how many events were routed to SIEM vs Data Lake only.
+    """
+    return orchestrator.storage_engine.get_routing_stats()
+
+
+@app.get("/api/events/siem")
+async def get_siem_events(limit: int = 50, offset: int = 0):
+    """Retrieve events from the SIEM database (security-relevant only)."""
+    return orchestrator.storage_engine.query_siem_events(limit=limit, offset=offset)
+
+
+@app.get("/api/events/datalake")
+async def get_datalake_events(limit: int = 50, offset: int = 0):
+    """Retrieve events from the Data Lake database (all events)."""
+    return orchestrator.storage_engine.query_datalake_events(limit=limit, offset=offset)
 
 
 @app.post("/api/stream/control")

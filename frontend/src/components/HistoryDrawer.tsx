@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Database, X, RefreshCw, Eye } from 'lucide-react';
+import { X, RefreshCw, Eye } from 'lucide-react';
 import { fetchStoredEvents, fetchEventDetail } from '../api';
 
 interface HistoryDrawerProps {
@@ -47,125 +47,133 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose}>
       <div 
-        className="glass-panel"
+        className="panel-machined"
         onClick={(e) => e.stopPropagation()}
         style={{
           width: '100%',
-          maxWidth: '960px',
+          maxWidth: '900px',
           maxHeight: '85vh',
           display: 'flex',
           flexDirection: 'column',
-          padding: '24px',
-          borderRadius: '12px',
-          boxShadow: '0 0 40px rgba(0, 0, 0, 0.8)',
-          border: '1px solid rgba(255, 255, 255, 0.15)',
+          padding: '20px',
         }}
       >
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Database size={20} color="#00f0ff" />
-            <div>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, fontFamily: 'var(--font-display)', color: '#f8fafc' }}>
-                SQLite WAL Event Journal
-              </h3>
-              <p style={{ fontSize: '0.72rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
-                Indexed Transactional Log Records in Local SQLite Database
-              </p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', borderBottom: '1px solid var(--hairline)', paddingBottom: '8px' }}>
+          <div>
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 700, fontFamily: 'var(--font-chrome)', color: 'var(--text-high)' }}>
+              EVENT JOURNAL HISTORY
+            </h3>
+            <div className="readout" style={{ fontSize: '0.66rem', color: 'var(--text-low)', marginTop: '2px' }}>
+              SQLite WAL Indexed Telemetry Records
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button 
-              className="btn-cyber btn-cyber-secondary" 
               onClick={loadEvents} 
               disabled={isLoading}
-              style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+              className="btn-instrument"
             >
-              <RefreshCw size={13} className={isLoading ? 'anim-pulse-cyan' : ''} />
+              <RefreshCw size={11} className={isLoading ? 'anim-pulse-cyan' : ''} />
               <span>Refresh</span>
             </button>
             <button 
-              onClick={onClose}
-              style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
+              onClick={onClose} 
+              className="btn-instrument"
+              style={{ padding: '3px 6px' }}
             >
-              <X size={20} />
+              <X size={12} />
             </button>
           </div>
         </div>
 
-        {/* Table Container */}
-        <div style={{ overflowY: 'auto', flex: 1 }}>
-          {events.length === 0 ? (
-            <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', fontFamily: 'var(--font-mono)' }}>
-              {isLoading ? 'Loading stored events from SQLite...' : 'No events stored yet. Run events through the pipeline to populate storage.'}
+        {/* Content Table */}
+        <div style={{ flex: 1, overflowY: 'auto', maxHeight: '500px' }}>
+          {isLoading ? (
+            <div className="readout" style={{ padding: '30px', textAlign: 'center', color: 'var(--phosphor-amber)', fontSize: '0.76rem' }}>
+              Reading SQLite WAL events...
+            </div>
+          ) : events.length === 0 ? (
+            <div className="readout" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-low)', fontSize: '0.76rem' }}>
+              No events found in SQLite WAL storage.
             </div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-mono)', fontSize: '0.78rem' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontFamily: 'var(--font-readout)', fontSize: '0.72rem' }}>
               <thead>
-                <tr style={{ background: 'rgba(15, 23, 42, 0.9)', color: '#64748b', textAlign: 'left', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
-                  <th style={{ padding: '8px 12px' }}>EVENT ID</th>
-                  <th style={{ padding: '8px 12px' }}>VENDOR / PRODUCT</th>
-                  <th style={{ padding: '8px 12px' }}>ACTION</th>
-                  <th style={{ padding: '8px 12px' }}>SOURCE ➔ DESTINATION</th>
-                  <th style={{ padding: '8px 12px' }}>ANOMALY SCORE</th>
-                  <th style={{ padding: '8px 12px' }}>DQI</th>
-                  <th style={{ padding: '8px 12px' }}>ACTION</th>
+                <tr style={{ background: 'var(--panel-sunken)', borderBottom: '1px solid var(--hairline)', color: 'var(--text-low)', textTransform: 'uppercase', fontSize: '0.64rem' }}>
+                  <th style={{ padding: '6px 10px' }}>Event UUID</th>
+                  <th style={{ padding: '6px 10px' }}>Timestamp</th>
+                  <th style={{ padding: '6px 10px' }}>Vendor</th>
+                  <th style={{ padding: '6px 10px' }}>Source IP</th>
+                  <th style={{ padding: '6px 10px' }}>Action</th>
+                  <th style={{ padding: '6px 10px' }}>DQI</th>
+                  <th style={{ padding: '6px 10px' }}>Anomaly</th>
+                  <th style={{ padding: '6px 10px', textAlign: 'center' }}>Inspect</th>
                 </tr>
               </thead>
               <tbody>
-                {events.map((ev) => (
-                  <tr 
-                    key={ev.event_id}
-                    style={{ 
-                      borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
-                      transition: 'background 0.15s ease',
-                      cursor: 'pointer',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(0, 240, 255, 0.06)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                    onClick={() => handleRowClick(ev.event_id)}
-                  >
-                    <td style={{ padding: '10px 12px', color: '#00f0ff', fontWeight: 600 }}>
-                      {ev.event_id.slice(0, 8)}...
-                    </td>
-                    <td style={{ padding: '10px 12px', color: '#f8fafc' }}>
-                      {ev.vendor} • <span style={{ color: '#94a3b8' }}>{ev.product}</span>
-                    </td>
-                    <td style={{ padding: '10px 12px' }}>
-                      <span className={`badge ${ev.action === 'ALLOW' ? 'badge-green' : 'badge-red'}`} style={{ fontSize: '0.65rem' }}>
-                        {ev.action}
-                      </span>
-                    </td>
-                    <td style={{ padding: '10px 12px', color: '#cbd5e1' }}>
-                      {ev.src_ip || '-'}:{ev.src_port || '-'} ➔ {ev.dst_ip || '-'}:{ev.dst_port || '-'}
-                    </td>
-                    <td style={{ padding: '10px 12px' }}>
-                      <span className={`badge ${ev.anomaly_score >= 0.6 ? 'badge-red' : 'badge-green'}`} style={{ fontSize: '0.65rem' }}>
-                        {ev.anomaly_score ? ev.anomaly_score.toFixed(2) : '0.00'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '10px 12px', color: '#10b981', fontWeight: 700 }}>
-                      {ev.data_quality_score}%
-                    </td>
-                    <td style={{ padding: '10px 12px' }}>
-                      <button 
-                        className="btn-cyber btn-cyber-secondary"
-                        style={{ fontSize: '0.7rem', padding: '3px 8px' }}
-                      >
-                        <Eye size={12} />
-                        <span>Inspect</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {events.map((ev, idx) => {
+                  const isAnom = ev.is_anomalous === 1 || (ev.anomaly_score && ev.anomaly_score >= 0.60);
+                  const actColor = ev.action === 'ALLOW' ? 'var(--confirm-moss)' : ev.action === 'DENY' || ev.action === 'DROP' ? 'var(--alert-coral)' : 'var(--phosphor-amber)';
+
+                  return (
+                    <tr
+                      key={ev.event_id || idx}
+                      onClick={() => handleRowClick(ev.event_id)}
+                      style={{
+                        borderBottom: '1px solid var(--hairline)',
+                        background: idx % 2 === 0 ? 'transparent' : 'rgba(255, 255, 255, 0.01)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <td style={{ padding: '6px 10px', color: 'var(--phosphor-amber)', fontWeight: 600 }}>
+                        {ev.event_id ? ev.event_id.slice(0, 8) : 'N/A'}
+                      </td>
+                      <td style={{ padding: '6px 10px', color: 'var(--text-mid)' }}>
+                        {ev.timestamp ? ev.timestamp.slice(11, 19) : ev.ingested_at ? ev.ingested_at.slice(11, 19) : '00:00:00'}
+                      </td>
+                      <td style={{ padding: '6px 10px', color: 'var(--text-high)' }}>
+                        {ev.vendor || 'Generic'}
+                      </td>
+                      <td style={{ padding: '6px 10px', color: 'var(--text-mid)' }}>
+                        {ev.src_ip || '—'}
+                      </td>
+                      <td style={{ padding: '6px 10px' }}>
+                        <span style={{ color: actColor, fontWeight: 700 }}>
+                          {ev.action || 'UNKNOWN'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '6px 10px', color: 'var(--confirm-moss)' }}>
+                        {ev.data_quality_score ?? 100}%
+                      </td>
+                      <td style={{ padding: '6px 10px' }}>
+                        <span className={`badge-inst ${isAnom ? 'badge-coral' : 'badge-moss'}`}>
+                          {ev.anomaly_score !== undefined ? Number(ev.anomaly_score).toFixed(2) : '0.00'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '6px 10px', textAlign: 'center' }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRowClick(ev.event_id);
+                          }}
+                          className="btn-instrument"
+                          style={{ padding: '2px 5px', fontSize: '0.62rem' }}
+                        >
+                          <Eye size={10} />
+                          <span>Load</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
         </div>
-
       </div>
     </div>
   );

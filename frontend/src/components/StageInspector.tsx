@@ -506,7 +506,7 @@ export const StageInspector: React.FC<StageInspectorProps> = ({
               className={`btn-cyber ${exportTab === 'ocsf' ? 'btn-cyber-primary' : 'btn-cyber-secondary'}`}
               style={{ fontSize: '0.75rem', padding: '6px 12px' }}
             >
-              OCSF v1.1 Activity
+              OCSF 1.9.0 Activity
             </button>
             <button
               onClick={() => setExportTab('parquet')}
@@ -526,7 +526,7 @@ export const StageInspector: React.FC<StageInspectorProps> = ({
                 if (exports) {
                   if (exportTab === 'elastic') payload = exports.elastic_ecs;
                   else if (exportTab === 'splunk') payload = exports.splunk_hec;
-                  else if (exportTab === 'ocsf') payload = exports.ocsf_v1;
+                  else if (exportTab === 'ocsf') payload = exports.ocsf_1_9_0;
                   else if (exportTab === 'parquet') payload = exports.columnar_flat;
                 }
                 copyToClipboard(JSON.stringify(payload, null, 2));
@@ -541,7 +541,7 @@ export const StageInspector: React.FC<StageInspectorProps> = ({
               {exportTab === 'ulpf' && JSON.stringify(finalEvent, null, 2)}
               {exportTab === 'elastic' && JSON.stringify(exports?.elastic_ecs || { message: 'Run event to generate Elastic ECS' }, null, 2)}
               {exportTab === 'splunk' && JSON.stringify(exports?.splunk_hec || { message: 'Run event to generate Splunk HEC' }, null, 2)}
-              {exportTab === 'ocsf' && JSON.stringify(exports?.ocsf_v1 || { message: 'Run event to generate OCSF v1.1' }, null, 2)}
+              {exportTab === 'ocsf' && JSON.stringify(exports?.ocsf_1_9_0 || { message: 'Run event to generate OCSF 1.9.0' }, null, 2)}
               {exportTab === 'parquet' && JSON.stringify(exports?.columnar_flat || { message: 'Run event to generate Parquet record' }, null, 2)}
             </pre>
           </div>

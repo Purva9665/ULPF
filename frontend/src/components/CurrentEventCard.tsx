@@ -459,7 +459,7 @@ export const CurrentEventCard: React.FC<CurrentEventCardProps> = ({
                   exportFormat === 'ulpf' ? exports.ulpf_standard :
                   exportFormat === 'elastic' ? exports.elastic_ecs :
                   exportFormat === 'splunk' ? exports.splunk_hec :
-                  exportFormat === 'ocsf' ? exports.ocsf_v1 :
+                  exportFormat === 'ocsf' ? exports.ocsf_1_9_0 :
                   exports.columnar_flat,
                   null,
                   2

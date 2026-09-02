@@ -5,14 +5,9 @@ import type {
   SampleLog 
 } from '../types';
 import { 
-  Cpu, 
   ArrowLeft, 
-  CheckCircle2, 
-  Layers, 
-  Clock, 
-  Search, 
-  Check, 
   Copy, 
+  Check 
 } from 'lucide-react';
 
 interface ParserViewProps {
@@ -26,7 +21,7 @@ interface ParserViewProps {
 export const ParserView: React.FC<ParserViewProps> = ({
   context,
   onBackToOverview,
-  onSelectSample,
+  onSelectSample: _onSelectSample,
 }) => {
   const [copied, setCopied] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -38,7 +33,6 @@ export const ParserView: React.FC<ParserViewProps> = ({
   };
 
   const parsedEvent = context?.parsed_event;
-  const rawPayload = context?.raw_event?.raw.payload || '';
   const parserName = parsedEvent?.parser_name || 'cisco_asa';
   const vendor = parsedEvent?.parser_vendor || 'Cisco';
   const product = parsedEvent?.parser_product || 'ASA Firewall';
@@ -47,17 +41,16 @@ export const ParserView: React.FC<ParserViewProps> = ({
   const tokens = parsedEvent?.tokens || [];
   const durationUs = parsedEvent?.parsing_duration_us || 42;
 
-  // The 9 Built-in Plug-and-Play Parsers in ULPF
   const REGISTERED_PARSERS = [
-    { id: 'cisco_asa', name: 'Cisco ASA Syslog Parser', vendor: 'Cisco Systems', dialect: 'Syslog / ASA-4-*', priority: 1, sample: 'cisco_asa_smb_sweep' },
-    { id: 'palo_alto_panos', name: 'Palo Alto PAN-OS CSV Parser', vendor: 'Palo Alto Networks', dialect: 'CSV / TRAFFIC,THREAT', priority: 2, sample: 'palo_alto_ssh_brute' },
-    { id: 'suricata_eve', name: 'Suricata EVE JSON Parser', vendor: 'OISF Suricata', dialect: 'JSON / eve.json', priority: 3, sample: 'suricata_dns_tunnel' },
-    { id: 'zeek_conn', name: 'Zeek Connection TSV Parser', vendor: 'Zeek / Corelight', dialect: 'TSV / conn.log', priority: 4, sample: 'zeek_conn_sweep' },
-    { id: 'aws_vpc_flow', name: 'AWS VPC Flow Logs Parser', vendor: 'Amazon Web Services', dialect: 'Space-Delimited / v2', priority: 5, sample: 'aws_vpc_flow_egress' },
-    { id: 'cef', name: 'Common Event Format (CEF) Parser', vendor: 'ArcSight / Standard', dialect: 'CEF:0|Vendor|...', priority: 6, sample: 'cef_checkpoint_fw' },
-    { id: 'key_value', name: 'Generic Key=Value Parser', vendor: 'Generic / Multi-Vendor', dialect: 'k1=v1 k2="v2"', priority: 7, sample: 'fortinet_kv_traffic' },
-    { id: 'syslog_rfc3164', name: 'BSD Syslog RFC 3164 Parser', vendor: 'IETF RFC Standard', dialect: '<PRI>Timestamp Host Tag', priority: 8, sample: 'iptables_drop' },
-    { id: 'windows_security_event', name: 'Windows Security XML Parser', vendor: 'Microsoft Windows', dialect: 'XML / EventID 4624/4625', priority: 9, sample: 'windows_rdp_brute' },
+    { id: 'cisco_asa', name: 'Cisco ASA Syslog', vendor: 'Cisco', dialect: 'ASA-4-*' },
+    { id: 'palo_alto_panos', name: 'Palo Alto PAN-OS CSV', vendor: 'Palo Alto', dialect: 'CSV TRAFFIC' },
+    { id: 'suricata_eve', name: 'Suricata EVE JSON', vendor: 'OISF Suricata', dialect: 'eve.json' },
+    { id: 'zeek_conn', name: 'Zeek Connection TSV', vendor: 'Zeek', dialect: 'conn.log' },
+    { id: 'aws_vpc_flow', name: 'AWS VPC Flow Logs', vendor: 'AWS', dialect: 'Space-Delimited' },
+    { id: 'cef', name: 'ArcSight CEF', vendor: 'ArcSight', dialect: 'CEF:0|Vendor|...' },
+    { id: 'key_value', name: 'Generic Key=Value', vendor: 'Multi-Vendor', dialect: 'k1=v1 k2="v2"' },
+    { id: 'syslog_rfc3164', name: 'BSD Syslog RFC 3164', vendor: 'RFC Standard', dialect: '<PRI>Timestamp' },
+    { id: 'windows_security_event', name: 'Windows Event XML', vendor: 'Microsoft', dialect: 'EventID 4624' },
   ];
 
   const filteredFields = Object.entries(fields).filter(([k, v]) => 
@@ -66,234 +59,180 @@ export const ParserView: React.FC<ParserViewProps> = ({
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       
       {/* Header Bar */}
-      <div className="glass-panel" style={{ padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+      <div className="panel-machined" style={{ padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <button
             onClick={onBackToOverview}
-            className="btn-cyber btn-cyber-secondary"
-            style={{ padding: '6px 12px', fontSize: '0.78rem' }}
+            className="btn-instrument"
           >
-            <ArrowLeft size={14} />
+            <ArrowLeft size={13} />
             <span>Control Room</span>
           </button>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span className="badge badge-purple" style={{ fontSize: '0.72rem' }}>STAGE 02</span>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, fontFamily: 'var(--font-display)', color: '#f8fafc' }}>
-                Parser & AST Extraction Dashboard
-              </h2>
-            </div>
-            <p style={{ fontSize: '0.74rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
-              Heterogeneous Dialect Recognition, Token AST Disassembly, and Plug-and-Play Registry
-            </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span className="badge-inst badge-amber">STAGE [02]</span>
+            <h2 style={{ fontSize: '1.05rem', fontWeight: 700, fontFamily: 'var(--font-chrome)', color: 'var(--text-high)' }}>
+              Parser & AST Token Disassembly
+            </h2>
           </div>
         </div>
 
-        {/* Visual Flow Path */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(15, 23, 42, 0.7)', padding: '6px 14px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
-          <span style={{ fontSize: '0.72rem', color: '#00f0ff', fontFamily: 'var(--font-mono)' }}>RAW LOG</span>
-          <span style={{ color: '#64748b' }}>➔</span>
-          <span style={{ fontSize: '0.72rem', color: '#c084fc', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>[02] PARSER AST</span>
-          <span style={{ color: '#64748b' }}>➔</span>
-          <span style={{ fontSize: '0.72rem', color: '#38bdf8', fontFamily: 'var(--font-mono)' }}>STRUCTURED FIELDS</span>
+        <div className="readout" style={{ fontSize: '0.74rem', color: 'var(--text-low)' }}>
+          STAGE LATENCY: <strong style={{ color: 'var(--phosphor-amber)' }}>{durationUs} µs</strong>
         </div>
       </div>
 
-      {/* Top 4 Metrics Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
-        
-        <div className="glass-panel" style={{ padding: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>Selected Parser</span>
-            <Cpu size={16} color="#c084fc" />
-          </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 800, fontFamily: 'var(--font-mono)', color: '#c084fc', margin: '4px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      {/* 4 Readout Metric Tiles */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
+        <div className="panel-machined" style={{ padding: '12px 14px' }}>
+          <div className="readout" style={{ fontSize: '0.64rem', color: 'var(--text-low)' }}>ACTIVE PARSER</div>
+          <div className="readout" style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-high)', margin: '2px 0' }}>
             {parserName}
           </div>
-          <div style={{ fontSize: '0.68rem', color: '#e2e8f0', fontFamily: 'var(--font-mono)' }}>
-            Vendor: {vendor} ({product})
-          </div>
+          <div className="readout" style={{ fontSize: '0.66rem', color: 'var(--phosphor-amber)' }}>{vendor} • {product}</div>
         </div>
 
-        <div className="glass-panel" style={{ padding: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>Confidence Score</span>
-            <CheckCircle2 size={16} color="#10b981" />
+        <div className="panel-machined" style={{ padding: '12px 14px' }}>
+          <div className="readout" style={{ fontSize: '0.64rem', color: 'var(--text-low)' }}>EXTRACTED FIELDS</div>
+          <div className="readout" style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text-high)', margin: '2px 0' }}>
+            {Object.keys(fields).length} <span style={{ fontSize: '0.75rem', color: 'var(--text-low)' }}>keys</span>
           </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'var(--font-mono)', color: '#10b981', margin: '4px 0' }}>
-            {confidence}% MATCH
-          </div>
-          <div style={{ fontSize: '0.68rem', color: '#34d399', fontFamily: 'var(--font-mono)' }}>
-            Deterministic Signature & AST Match
-          </div>
+          <div className="readout" style={{ fontSize: '0.66rem', color: 'var(--confirm-moss)' }}>AST Dictionary</div>
         </div>
 
-        <div className="glass-panel" style={{ padding: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>Extracted Fields</span>
-            <Layers size={16} color="#38bdf8" />
+        <div className="panel-machined" style={{ padding: '12px 14px' }}>
+          <div className="readout" style={{ fontSize: '0.64rem', color: 'var(--text-low)' }}>TOKEN COUNT</div>
+          <div className="readout" style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text-high)', margin: '2px 0' }}>
+            {tokens.length} <span style={{ fontSize: '0.75rem', color: 'var(--text-low)' }}>tokens</span>
           </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'var(--font-mono)', color: '#f8fafc', margin: '4px 0' }}>
-            {Object.keys(fields).length} Keys
-          </div>
-          <div style={{ fontSize: '0.68rem', color: '#38bdf8', fontFamily: 'var(--font-mono)' }}>
-            {tokens.length} AST Tokens Disassembled
-          </div>
+          <div className="readout" style={{ fontSize: '0.66rem', color: 'var(--text-low)' }}>Lexical Decomposition</div>
         </div>
 
-        <div className="glass-panel" style={{ padding: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>Parsing Duration</span>
-            <Clock size={16} color="#fbbf24" />
+        <div className="panel-machined" style={{ padding: '12px 14px' }}>
+          <div className="readout" style={{ fontSize: '0.64rem', color: 'var(--text-low)' }}>PARSER CONFIDENCE</div>
+          <div className="readout" style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--confirm-moss)', margin: '2px 0' }}>
+            {confidence}%
           </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'var(--font-mono)', color: '#fbbf24', margin: '4px 0' }}>
-            {durationUs} µs
-          </div>
-          <div style={{ fontSize: '0.68rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
-            Compiled Lexer / Token AST Speed
-          </div>
+          <div className="readout" style={{ fontSize: '0.66rem', color: 'var(--text-low)' }}>Deterministic Match</div>
         </div>
-
       </div>
 
-      {/* Main Parser Workspace: Left Extracted Fields Matrix, Right Parser Registry */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '20px' }}>
+      {/* Main Grid: Left Extracted Fields, Right Parser Registry */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '12px' }}>
         
-        {/* Left: Raw Input vs Extracted Fields Matrix */}
-        <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          
-          {/* Raw Input Box */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-              <span style={{ fontSize: '0.74rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: '#00f0ff' }}>
-                RAW LOG INPUT TO PARSER:
-              </span>
-              <span style={{ fontSize: '0.68rem', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
-                {rawPayload.length} bytes
-              </span>
-            </div>
-            <div className="code-box" style={{ maxHeight: '80px', color: '#38bdf8' }}>
-              {rawPayload || 'No event currently loaded in pipeline.'}
-            </div>
-          </div>
+        {/* Left: Extracted AST Fields Table */}
+        <div className="panel-machined" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--hairline)', paddingBottom: '8px' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-high)', fontFamily: 'var(--font-chrome)' }}>
+              EXTRACTED AST KEY-VALUE MATRIX
+            </span>
 
-          {/* Extracted Fields Table */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '0.82rem', fontWeight: 700, fontFamily: 'var(--font-display)', color: '#f8fafc' }}>
-                  Extracted Intermediate Field Matrix ({Object.keys(fields).length})
-                </span>
-                <span className="badge badge-purple" style={{ fontSize: '0.62rem' }}>PARSED AST</span>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {/* Search in fields */}
-                <div style={{ display: 'flex', alignItems: 'center', background: '#040813', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '6px', padding: '2px 8px' }}>
-                  <Search size={12} color="#64748b" />
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Filter keys/values..."
-                    style={{ background: 'transparent', border: 'none', color: '#e2e8f0', fontSize: '0.72rem', fontFamily: 'var(--font-mono)', padding: '3px 6px', width: '130px', outline: 'none' }}
-                  />
-                </div>
-
-                <button
-                  onClick={() => copyJson(fields)}
-                  className="btn-cyber btn-cyber-secondary"
-                  style={{ padding: '4px 10px', fontSize: '0.72rem' }}
-                >
-                  {copied ? <Check size={12} color="#10b981" /> : <Copy size={12} />}
-                  <span>Copy JSON</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Grid of Key-Value Tokens */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '8px', maxHeight: '340px', overflowY: 'auto' }}>
-              {filteredFields.map(([k, v]) => (
-                <div
-                  key={k}
-                  style={{
-                    background: 'rgba(15, 23, 42, 0.75)',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid rgba(255, 255, 255, 0.06)',
-                    fontFamily: 'var(--font-mono)',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
-                    <span style={{ color: '#c084fc', fontSize: '0.7rem', fontWeight: 600 }}>{k}</span>
-                    <span style={{ fontSize: '0.6rem', color: '#64748b' }}>
-                      {typeof v === 'number' ? 'INTEGER' : typeof v === 'boolean' ? 'BOOLEAN' : 'STRING'}
-                    </span>
-                  </div>
-                  <div style={{ color: '#f8fafc', fontSize: '0.75rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={String(v)}>
-                    {String(v)}
-                  </div>
-                </div>
-              ))}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <input
+                type="text"
+                placeholder="Filter keys..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{
+                  background: 'var(--panel-sunken)',
+                  border: '1px solid var(--hairline)',
+                  borderRadius: 'var(--radius-sm)',
+                  color: 'var(--text-high)',
+                  fontFamily: 'var(--font-readout)',
+                  fontSize: '0.72rem',
+                  padding: '3px 8px',
+                  outline: 'none',
+                  width: '130px',
+                }}
+              />
+              <button
+                onClick={() => copyJson(fields)}
+                className="btn-instrument"
+                style={{ padding: '2px 6px', fontSize: '0.66rem' }}
+              >
+                {copied ? <Check size={10} color="var(--confirm-moss)" /> : <Copy size={10} />}
+                <span>JSON</span>
+              </button>
             </div>
           </div>
 
+          <div style={{ overflowX: 'auto', maxHeight: '380px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontFamily: 'var(--font-readout)', fontSize: '0.72rem' }}>
+              <thead>
+                <tr style={{ background: 'var(--panel-sunken)', borderBottom: '1px solid var(--hairline)', color: 'var(--text-low)', textTransform: 'uppercase', fontSize: '0.64rem' }}>
+                  <th style={{ padding: '6px 10px' }}>Source AST Key</th>
+                  <th style={{ padding: '6px 10px' }}>Extracted Value</th>
+                  <th style={{ padding: '6px 10px' }}>Inferred Type</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredFields.map(([k, v], idx) => (
+                  <tr 
+                    key={k}
+                    style={{ 
+                      borderBottom: '1px solid var(--hairline)',
+                      background: idx % 2 === 0 ? 'transparent' : 'rgba(255, 255, 255, 0.01)'
+                    }}
+                  >
+                    <td style={{ padding: '6px 10px', color: 'var(--phosphor-amber)', fontWeight: 600 }}>
+                      {k}
+                    </td>
+                    <td style={{ padding: '6px 10px', color: 'var(--text-high)' }}>
+                      {String(v)}
+                    </td>
+                    <td style={{ padding: '6px 10px', color: 'var(--text-low)' }}>
+                      {typeof v === 'number' ? 'integer' : 'string'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        {/* Right: Plug-and-Play Parser Registry */}
-        <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Cpu size={18} color="#c084fc" />
-              <h3 style={{ fontSize: '0.98rem', fontWeight: 700, fontFamily: 'var(--font-display)', color: '#f8fafc' }}>
-                Parser Registry Directory
-              </h3>
-            </div>
-            <span className="badge badge-purple" style={{ fontSize: '0.62rem' }}>9 PARSERS</span>
+        {/* Right: 9-Dialect Parser Registry */}
+        <div className="panel-machined" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ borderBottom: '1px solid var(--hairline)', paddingBottom: '8px' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-high)', fontFamily: 'var(--font-chrome)' }}>
+              REGISTERED PARSER MATRIX
+            </span>
           </div>
 
-          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '480px' }}>
-            {REGISTERED_PARSERS.map((reg) => {
-              const isCurrent = parserName === reg.id;
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {REGISTERED_PARSERS.map((p) => {
+              const isMatch = p.id === parserName;
               return (
                 <div
-                  key={reg.id}
+                  key={p.id}
                   style={{
-                    background: isCurrent ? 'rgba(168, 85, 247, 0.15)' : 'rgba(15, 23, 42, 0.65)',
-                    border: `1px solid ${isCurrent ? 'rgba(168, 85, 247, 0.5)' : 'rgba(255, 255, 255, 0.05)'}`,
-                    borderRadius: '8px',
-                    padding: '10px 12px',
-                    transition: 'all 0.15s ease',
+                    background: isMatch ? 'var(--phosphor-amber-dim)' : 'var(--panel-sunken)',
+                    border: `1px solid ${isMatch ? 'var(--phosphor-amber)' : 'var(--hairline)'}`,
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '6px 8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: isCurrent ? '#c084fc' : '#f8fafc', fontFamily: 'var(--font-mono)' }}>
-                      {reg.name}
+                  <div>
+                    <div style={{ fontSize: '0.74rem', fontWeight: isMatch ? 700 : 500, color: isMatch ? 'var(--phosphor-amber)' : 'var(--text-high)' }}>
+                      {p.name}
+                    </div>
+                    <div className="readout" style={{ fontSize: '0.64rem', color: 'var(--text-low)' }}>
+                      {p.vendor} • {p.dialect}
+                    </div>
+                  </div>
+                  {isMatch && (
+                    <span className="badge-inst badge-amber" style={{ fontSize: '0.6rem' }}>
+                      MATCH
                     </span>
-                    {isCurrent && (
-                      <span className="badge badge-purple" style={{ fontSize: '0.58rem' }}>ACTIVE</span>
-                    )}
-                  </div>
-
-                  <div style={{ fontSize: '0.68rem', color: '#94a3b8', fontFamily: 'var(--font-mono)', marginBottom: '6px' }}>
-                    Vendor: {reg.vendor} • {reg.dialect}
-                  </div>
-
-                  <button
-                    onClick={() => onSelectSample(reg.sample)}
-                    className="btn-cyber btn-cyber-secondary"
-                    style={{ padding: '3px 8px', fontSize: '0.66rem', width: '100%', justifyContent: 'center' }}
-                  >
-                    <span>Test With {reg.vendor.split(' ')[0]} Sample</span>
-                  </button>
+                  )}
                 </div>
               );
             })}
           </div>
-
         </div>
 
       </div>

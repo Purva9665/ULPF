@@ -18,7 +18,12 @@ from backend.core.models import (
     ActionEnum,
     SeverityEnum,
 )
-from backend.normalizer.mappings import ACTION_MAP, SEVERITY_MAP, WELL_KNOWN_PORTS, FIELD_ALIASES
+from backend.normalizer.mappings import (
+    ACTION_MAP, SEVERITY_MAP, WELL_KNOWN_PORTS, FIELD_ALIASES,
+    ASA_MNEMONIC_ACTION, ZEEK_CONN_STATE,
+)
+from backend.normalizer.taxonomy import default_classifier
+from backend.normalizer.netscope import default_scope
 
 
 class NormalizationEngine:
@@ -39,6 +44,8 @@ class NormalizationEngine:
         # 1. Event Metadata
         action_val = self._find_first(fields, FIELD_ALIASES["event.action"], consumed_keys)
         canonical_action = self._normalize_action(action_val)
+        if canonical_action is ActionEnum.UNKNOWN:
+            canonical_action = self._action_from_vendor_code(fields, consumed_keys)
 
         severity_val = self._find_first(fields, FIELD_ALIASES["event.severity"], consumed_keys)
         canonical_severity = self._normalize_severity(severity_val)
@@ -49,7 +56,7 @@ class NormalizationEngine:
             id=parsed_event.event_id,
             ingested_at=datetime.now(timezone.utc).isoformat(),
             timestamp=timestamp_val,
-            category=str(fields.get("category", "NETWORK_TRAFFIC")).upper(),
+            category="unclassified",  # replaced below by the taxonomy classifier
             type=str(fields.get("panos_log_type", fields.get("cisco_message_type", "FIREWALL_EVENT"))),
             action=canonical_action,
             severity=canonical_severity,
@@ -63,7 +70,7 @@ class NormalizationEngine:
         src_bytes = self._find_first(fields, FIELD_ALIASES["source.bytes"], consumed_keys)
         
         src_port_int = self._to_int(src_port)
-        src_is_private = self._is_private_ip(src_ip)
+        src_is_private = default_scope.is_internal(src_ip)
         
         source = NetworkEndpoint(
             ip=str(src_ip) if src_ip else None,
@@ -71,7 +78,7 @@ class NormalizationEngine:
             packets=self._to_int(src_pkts),
             bytes=self._to_int(src_bytes),
             service=WELL_KNOWN_PORTS.get(src_port_int) if src_port_int else None,
-            geo={"is_private": src_is_private} if src_ip else {},
+            geo={"is_internal": src_is_private, "scope": default_scope.scope_of(src_ip)} if src_ip else {},
         )
 
         # 3. Destination Endpoint
@@ -81,7 +88,7 @@ class NormalizationEngine:
         dst_bytes = self._find_first(fields, FIELD_ALIASES["destination.bytes"], consumed_keys)
 
         dst_port_int = self._to_int(dst_port)
-        dst_is_private = self._is_private_ip(dst_ip)
+        dst_is_private = default_scope.is_internal(dst_ip)
 
         destination = NetworkEndpoint(
             ip=str(dst_ip) if dst_ip else None,
@@ -90,7 +97,7 @@ class NormalizationEngine:
             bytes=self._to_int(dst_bytes),
             domain=fields.get("domain") or fields.get("query"),
             service=WELL_KNOWN_PORTS.get(dst_port_int) if dst_port_int else None,
-            geo={"is_private": dst_is_private} if dst_ip else {},
+            geo={"is_internal": dst_is_private, "scope": default_scope.scope_of(dst_ip)} if dst_ip else {},
         )
 
         # 4. Network Details
@@ -99,7 +106,7 @@ class NormalizationEngine:
         total_bytes = self._find_first(fields, FIELD_ALIASES["network.bytes_total"], consumed_keys)
         total_pkts = self._find_first(fields, FIELD_ALIASES["network.packets_total"], consumed_keys)
 
-        direction = self._calculate_direction(src_is_private, dst_is_private, fields.get("direction"))
+        direction = default_scope.direction(src_ip, dst_ip, fields.get("direction"))
 
         network = NetworkDetails(
             protocol=str(protocol).upper(),
@@ -125,6 +132,36 @@ class NormalizationEngine:
                 confidence=0.90 if threat_sig else 0.50,
             )
 
+        # 5b. Canonical taxonomy classification (requirement c)
+        classification = default_classifier.classify(
+            action=canonical_action.value,
+            severity=canonical_severity.value,
+            dst_port=destination.port,
+            src_port=source.port,
+            protocol=network.protocol,
+            direction=network.direction,
+            app=str(fields.get("app") or fields.get("service") or destination.service or ""),
+            threat_signature=str(threat_sig) if threat_sig else "",
+            threat_category=str(threat_cat) if threat_cat else "",
+            vendor_event_type=str(
+                fields.get("panos_log_type")
+                or fields.get("threat_content_type")
+                or fields.get("mnemonic")
+                or fields.get("event_type")
+                or ""
+            ),
+            uri=str(
+                fields.get("http_uri") or fields.get("url") or fields.get("request")
+                or fields.get("uri") or fields.get("request_url") or ""
+            ),
+            windows_event_id=self._to_int(fields.get("windows_event_id")),
+            src_is_internal=src_is_private,
+            dst_is_internal=dst_is_private,
+        )
+        event_meta.category = classification.threat_class.value
+        if classification.mitre_techniques and threat is not None:
+            threat.mitre_technique_id = classification.mitre_techniques[0]
+
         # 6. Observer Details
         obs_host = self._find_first(fields, FIELD_ALIASES["observer.hostname"], consumed_keys)
         raw_ver = fields.get("device_version") or fields.get("version")
@@ -146,6 +183,7 @@ class NormalizationEngine:
             event_id=parsed_event.event_id,
             raw=parsed_event.raw,
             event=event_meta,
+            classification=classification.as_dict(),
             source=source,
             destination=destination,
             network=network,
@@ -184,13 +222,10 @@ class NormalizationEngine:
             return None
 
     def _is_private_ip(self, ip_str: Any) -> Optional[bool]:
-        if not ip_str or not isinstance(ip_str, str):
-            return None
-        try:
-            ip = ipaddress.ip_address(ip_str.strip())
-            return ip.is_private
-        except ValueError:
-            return None
+        """Deprecated alias. Use netscope.default_scope.is_internal - Python's
+        ipaddress.is_private counts RFC 5737 documentation ranges as private,
+        which mislabels external hosts in almost every vendor sample log."""
+        return default_scope.is_internal(ip_str)
 
     def _calculate_direction(self, src_priv: Optional[bool], dst_priv: Optional[bool], explicit_dir: Any) -> str:
         if explicit_dir and str(explicit_dir).upper() in ("INBOUND", "OUTBOUND", "INTERNAL"):
@@ -202,6 +237,23 @@ class NormalizationEngine:
         if src_priv is True and dst_priv is True:
             return "INTERNAL"
         return "EXTERNAL"
+
+    def _action_from_vendor_code(self, fields: Dict[str, Any], consumed_keys: set) -> ActionEnum:
+        """Recover the action from vendor status codes for devices that never
+        emit a literal action word (Cisco ASA mnemonics, Zeek conn_state)."""
+        mnemonic = str(fields.get("mnemonic", "")).strip()
+        if mnemonic in ASA_MNEMONIC_ACTION:
+            resolved = ASA_MNEMONIC_ACTION[mnemonic]
+            if resolved is not ActionEnum.UNKNOWN:
+                consumed_keys.add("mnemonic")
+                return resolved
+
+        conn_state = str(fields.get("conn_state", "")).strip().upper()
+        if conn_state in ZEEK_CONN_STATE:
+            consumed_keys.add("conn_state")
+            return ZEEK_CONN_STATE[conn_state][0]
+
+        return ActionEnum.UNKNOWN
 
     def _extract_timestamp(self, fields: Dict[str, Any], consumed_keys: set) -> str:
         for k in ("timestamp_iso", "start_iso", "generated_time", "receive_time", "syslog_timestamp", "time", "date"):

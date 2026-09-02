@@ -224,6 +224,7 @@ export interface EngineStats {
     overall_compression_ratio: number;
     avg_data_quality_score: number;
     total_anomalies: number;
+    recent_events?: any[];
   };
   is_streaming: boolean;
   current_eps: number;
@@ -250,7 +251,7 @@ export interface ExportSchemas {
   ulpf_standard: any;
   elastic_ecs: any;
   splunk_hec: any;
-  ocsf_v1: any;
+  ocsf_1_9_0: any;
   columnar_flat: any;
 }
 

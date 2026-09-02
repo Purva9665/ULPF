@@ -69,15 +69,73 @@ class PipelineOrchestrator:
             except Exception:
                 pass
 
+    def process_batch(
+        self,
+        raw_texts: List[str],
+        source_protocol: str = "SYSLOG_UDP",
+        batch_size: int = 256,
+    ) -> List[PipelineContext]:
+        """Bulk ingest path: process many raw events, scoring ML in batches.
+
+        scikit-learn's inference cost is dominated by fixed per-call overhead,
+        not by per-sample work - roughly 2,800 us for a single row versus
+        ~49 us/row at batch size 64 on the reference machine. Scoring one event
+        per call therefore caps throughput at ~100 EPS regardless of hardware.
+        Batching model inference is what makes the 1,000-10,000 EPS design
+        target reachable, and is how streaming systems normally run inference.
+
+        Stages INGEST..STORE run per event, because each depends on the previous
+        one for that event. Only the model call is batched.
+        """
+        results: List[PipelineContext] = []
+        for start in range(0, len(raw_texts), batch_size):
+            chunk = raw_texts[start:start + batch_size]
+
+            # Pass 1: run every event up to and including STORE, committing
+            # once for the whole chunk rather than three times per event.
+            staged: List[PipelineContext] = []
+            with self.storage_engine.batch_writes():
+                for raw in chunk:
+                    staged.append(
+                        self.process_sync(
+                            raw, source_protocol=source_protocol, skip_ml=True
+                        )
+                    )
+
+            # Pass 2: one model call for the whole chunk.
+            scorable = [c for c in staged if c.stored_event is not None and not c.error]
+            if scorable:
+                rows = [self.ml_engine.features_for(c.stored_event) for c in scorable]
+                scores = self.ml_engine.score_batch(rows)
+                with self.storage_engine.batch_writes():
+                    for ctx, score in zip(scorable, scores):
+                        self._finish_ml(ctx, precomputed_model_score=score)
+
+            results.extend(staged)
+        return results
+
+    def _finish_ml(
+        self, ctx: PipelineContext, precomputed_model_score: Optional[float] = None
+    ) -> None:
+        """Run the ML stage for a context whose STORE stage already completed."""
+        ml_event = self.ml_engine.analyze(
+            ctx.stored_event, precomputed_model_score=precomputed_model_score
+        )
+        ctx.ml_event = ml_event
+        if StageEnum.ML not in ctx.stages_completed:
+            ctx.stages_completed.append(StageEnum.ML)
+
     def process_sync(
         self,
         raw_text: str,
         source_protocol: str = "SYSLOG_UDP",
         source_metadata: Optional[Dict[str, Any]] = None,
         explicit_parser: Optional[str] = None,
+        skip_ml: bool = False,
     ) -> PipelineContext:
         """
         Executes the entire pipeline synchronously from INGEST to EXPORT.
+        `skip_ml` stops after STORE so the caller can batch model inference.
         Returns complete PipelineContext with all intermediate stage snapshots.
         """
         pipeline_t0 = time.perf_counter_ns()
@@ -211,6 +269,13 @@ class PipelineOrchestrator:
                 )
             )
 
+            # The bulk path stops here so model inference can be batched;
+            # scikit-learn's cost is dominated by fixed per-call overhead.
+            if skip_ml:
+                ctx.total_duration_us = (time.perf_counter_ns() - pipeline_t0) // 1000
+                self._add_to_buffer(ctx)
+                return ctx
+
             # Stage 6: ML
             ctx.current_stage = StageEnum.ML
             t0 = time.perf_counter_ns()
@@ -271,6 +336,7 @@ class PipelineOrchestrator:
                 pipeline_telemetry={
                     "total_duration_us": total_duration_us,
                     "stages_count": len(ctx.stages_completed),
+                    "classification": norm_event.classification,
                 },
             )
             ctx.final_event = final_event
@@ -527,7 +593,10 @@ class PipelineOrchestrator:
                 "hash_verified": val_event.hash_verified,
             },
             storage=stored_event.storage,
-            pipeline_telemetry={"total_duration_us": ctx.total_duration_us},
+            pipeline_telemetry={
+                "total_duration_us": ctx.total_duration_us,
+                "classification": ctx.normalized_event.classification if ctx.normalized_event else {},
+            },
         )
         ctx.final_event = final_event
 
@@ -598,7 +667,10 @@ class PipelineOrchestrator:
                 ml_analysis=ctx.ml_event.ml,
                 validation={"is_valid": ctx.validated_event.is_valid if ctx.validated_event else True},
                 storage=ctx.stored_event.storage if ctx.stored_event else StorageMetadata(raw_size_bytes=0, compressed_size_bytes=0, compression_ratio=0),
-                pipeline_telemetry={"total_duration_us": ctx.total_duration_us},
+                pipeline_telemetry={
+                "total_duration_us": ctx.total_duration_us,
+                "classification": ctx.normalized_event.classification if ctx.normalized_event else {},
+            },
             )
             ctx.final_event = final_event
             ctx.current_stage = StageEnum.STANDARDIZED

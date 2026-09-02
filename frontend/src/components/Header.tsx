@@ -34,9 +34,11 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'parser', label: 'Parser' },
     { id: 'normalization', label: 'Normalization' },
     { id: 'validation', label: 'Validation' },
-    { id: 'storage', label: 'Storage (SQLite WAL)' },
-    { id: 'ml', label: 'ML / Analytics' },
+    { id: 'storage', label: 'Storage' },
+    { id: 'ml', label: 'ML Anomaly' },
     { id: 'export', label: 'Export' },
+    { id: 'analytics', label: 'Analytics' },
+    { id: 'explorer', label: 'Log Explorer' },
     { id: 'journey', label: 'Event Journey' },
   ];
 

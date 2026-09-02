@@ -1,0 +1,50 @@
+{
+  "environment": {
+    "python": "3.14.6",
+    "implementation": "CPython",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 170 Stepping 4, GenuineIntel",
+    "cpu_count": 22
+  },
+  "config": {
+    "events_measured": 10000,
+    "warmup_events": 500,
+    "corpus": "realistic_mix",
+    "storage": "SQLite WAL (3 databases: primary, siem, datalake)",
+    "ml_inference": "batched (size 512)"
+  },
+  "throughput": {
+    "events_per_second": 895.0,
+    "wall_seconds": 10.789,
+    "failures": 0,
+    "runs": 5,
+    "observed_eps": [
+      874.7,
+      889.4,
+      895.0,
+      905.8,
+      926.8
+    ],
+    "min_eps": 874.7,
+    "max_eps": 926.8
+  },
+  "latency_us": {
+    "mean": 669.1,
+    "p50": 505.0,
+    "p95": 820.0,
+    "p99": 1274.1,
+    "max": 313004.0
+  },
+  "stage_mean_us": {
+    "INGEST": 0.0,
+    "PARSE": 153.0,
+    "NORMALIZE": 125.7,
+    "VALIDATE": 109.7,
+    "STORE": 206.2
+  },
+  "routing": {
+    "security_relevant": 1152,
+    "total": 10000,
+    "siem_rate_pct": 11.5
+  }
+}

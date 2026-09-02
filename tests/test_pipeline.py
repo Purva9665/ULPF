@@ -212,8 +212,20 @@ def test_req8_and_9_storage_and_analytics_exports():
     assert "splunk_hec" in exports
     assert exports["splunk_hec"]["sourcetype"].startswith("ulpf:")
 
-    assert "ocsf_v1" in exports
-    assert exports["ocsf_v1"]["class_name"] == "Network Activity"
+    assert "ocsf_1_9_0" in exports
+    ocsf = exports["ocsf_1_9_0"]
+    # OCSF requires metadata, and type_uid must equal class_uid*100 + activity_id.
+    assert ocsf["metadata"]["version"] == "1.9.0"
+    assert ocsf["type_uid"] == ocsf["class_uid"] * 100 + ocsf["activity_id"]
+    # Lossless primitives must survive into the exported document (req a, d).
+    assert ocsf["raw_data"] == ctx.normalized_event.raw.payload
+    assert ocsf["raw_data_hash"]["value"] == ctx.normalized_event.raw.sha256_hash
+    # class_uid now comes from the taxonomy classifier rather than being
+    # hardcoded, so a Suricata alert is a Detection Finding, not Network Activity.
+    assert ocsf["class_name"] in (
+        "Detection Finding", "Network Activity", "DNS Activity",
+        "HTTP Activity", "SSH Activity", "SMB Activity", "Authentication",
+    )
 
     assert "columnar_flat" in exports
     assert "raw_sha256" in exports["columnar_flat"]
@@ -236,7 +248,20 @@ def test_req10_and_13_local_ml_anomaly_detection():
     attack_ctx = orchestrator.process_sync(attack_log)
     assert attack_ctx.ml_event.ml.anomaly_score >= 0.60
     assert attack_ctx.ml_event.ml.is_anomalous is True
-    assert attack_ctx.ml_event.ml.shannon_entropy > 4.5
+    # Entropy is measured over extracted field values, not the raw line. Scoring
+    # the raw line measures the log FORMAT (JSON scores higher than syslog
+    # regardless of content), which is not a security signal.
+    assert attack_ctx.ml_event.ml.shannon_entropy > 3.5
+
+    # The two scoring axes must stay separable: a rule hit must be attributable
+    # to rules, not silently folded into the model's output.
+    extra = getattr(attack_ctx.ml_event.ml, "__ulpf_extra__", {})
+    assert extra["rule_risk_score"] >= 0.60
+    assert extra["model_state"] in ("cold_start", "fitted")
+
+    # Confidence must reflect evidence. A cold-start model cannot be 0.94 sure.
+    if extra["model_state"] == "cold_start":
+        assert attack_ctx.ml_event.ml.confidence < 0.60
     assert len(attack_ctx.ml_event.ml.feature_contributions) >= 2
 
 

@@ -1,9 +1,9 @@
 """
 ULPF SIEM & Data Lake Exporter Engine (Stage 7)
-Translates standardized ULPF events into Elastic ECS 8.x, Splunk HEC, OCSF v1.1, and Columnar Parquet schemas.
+Translates standardized ULPF events into Elastic ECS, Splunk HEC, OCSF 1.9.0 and columnar Parquet representations.
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 from backend.core.models import ULPFFinalEvent
 
 
@@ -19,7 +19,7 @@ class ExporterEngine:
             "ulpf_standard": final_event.model_dump(),
             "elastic_ecs": self.to_elastic_ecs(final_event),
             "splunk_hec": self.to_splunk_hec(final_event),
-            "ocsf_v1": self.to_ocsf(final_event),
+            "ocsf_1_9_0": self.to_ocsf(final_event),
             "columnar_flat": self.to_columnar_flat(final_event),
         }
 
@@ -99,30 +99,96 @@ class ExporterEngine:
             }
         }
 
+    #: OCSF schema version this exporter emits. Verified against the
+    #: ocsf/ocsf-schema release feed; 1.9.0 was released 2026-08-03 and added
+    #: the record_integrity profile used below.
+    OCSF_VERSION = "1.9.0"
+
+    #: OCSF activity_id for the Network Activity class family.
+    _ACTIVITY_BY_ACTION = {
+        "ALLOW": (1, "Open"), "DENY": (4, "Refuse"), "DROP": (4, "Refuse"),
+        "REJECT": (4, "Refuse"), "RESET": (3, "Reset"), "ALERT": (6, "Other"),
+    }
+
     def to_ocsf(self, fe: ULPFFinalEvent) -> Dict[str, Any]:
-        """Transforms to Open Cybersecurity Schema Framework (OCSF v1.1 Network Activity)."""
-        return {
-            "class_uid": 4001,
-            "class_name": "Network Activity",
-            "category_uid": 4,
-            "category_name": "Network Activity",
+        """Transform to an OCSF event.
+
+        Two things make this a real OCSF document rather than an OCSF-shaped one:
+
+        * class_uid is taken from the taxonomy classifier, so a DNS event is
+          emitted as DNS Activity (4003) rather than every event being forced
+          into Network Activity (4001).
+        * The lossless primitives OCSF defines on base_event are populated:
+          raw_data, raw_data_hash, raw_data_size and unmapped. Requirements (a)
+          and (d) are therefore satisfied by the schema itself and can be
+          verified by a consumer, not merely asserted by us.
+        """
+        classification = (fe.pipeline_telemetry or {}).get("classification") or {}
+        class_uid = int(classification.get("ocsf_class_uid") or 4001)
+        class_name = classification.get("ocsf_class_name") or "Network Activity"
+        category_uid = int(classification.get("ocsf_category_uid") or 4)
+        category_name = classification.get("ocsf_category_name") or "Network Activity"
+
+        activity_id, activity_name = self._ACTIVITY_BY_ACTION.get(
+            fe.event.action.value, (0, "Unknown")
+        )
+        severity_id = self._severity_to_ocsf_id(fe.event.severity.value)
+
+        doc: Dict[str, Any] = {
+            # -- required base_event fields -------------------------------
+            "metadata": {
+                "version": self.OCSF_VERSION,
+                "product": {
+                    "name": "ULPF",
+                    "vendor_name": "ULPF",
+                    "version": fe.ulpf_version,
+                },
+                "profiles": ["security_control", "record_integrity"],
+                "log_provider": fe.observer.vendor,
+                "log_name": fe.observer.product,
+                "logged_time": fe.event.ingested_at,
+                "original_time": fe.event.timestamp,
+                "uid": fe.event_id,
+            },
+            "class_uid": class_uid,
+            "class_name": class_name,
+            "category_uid": category_uid,
+            "category_name": category_name,
+            "activity_id": activity_id,
+            "activity_name": activity_name,
+            # type_uid is defined by OCSF as class_uid * 100 + activity_id.
+            "type_uid": class_uid * 100 + activity_id,
+            "type_name": f"{class_name}: {activity_name}",
+            "severity_id": severity_id,
+            "severity": fe.event.severity.value.title(),
             "time": fe.event.timestamp or fe.event.ingested_at,
-            "activity_id": 1 if fe.event.action.value == "ALLOW" else 2,
-            "severity_id": self._severity_to_ocsf_id(fe.event.severity.value),
-            "status": fe.event.action.value,
+            "status": fe.event.action.value.title(),
+
+            # -- lossless preservation (requirements a and d) --------------
+            "raw_data": fe.raw_event.payload,
+            "raw_data_hash": {
+                "algorithm": "SHA-256",
+                "algorithm_id": 3,
+                "value": fe.raw_event.sha256_hash,
+            },
+            "raw_data_size": fe.raw_event.length_bytes,
+            "unmapped": fe.unmapped_fields,
+
+            # -- network detail --------------------------------------------
             "src_endpoint": {
                 "ip": fe.source.ip,
                 "port": fe.source.port,
-                "intermediate": False,
+                "svc_name": fe.source.service,
             },
             "dst_endpoint": {
                 "ip": fe.destination.ip,
                 "port": fe.destination.port,
                 "hostname": fe.destination.domain,
+                "svc_name": fe.destination.service,
             },
             "connection_info": {
                 "protocol_name": fe.network.protocol,
-                "direction": fe.network.direction,
+                "direction": fe.network.direction.title(),
                 "uid": fe.network.session_id,
             },
             "traffic": {
@@ -134,14 +200,57 @@ class ExporterEngine:
                 "product_name": fe.observer.product,
                 "hostname": fe.observer.hostname,
             },
-            "enrichments": [
-                {
-                    "name": "ULPF Machine Learning Analytics",
-                    "value": f"Anomaly Score: {fe.ml_analysis.anomaly_score:.2f}, Risk: {fe.ml_analysis.risk_level.value}",
-                }
-            ],
-            "raw_data": fe.raw_event.payload,
+            "observables": self._observables(fe),
+            "enrichments": [{
+                "name": "ulpf.anomaly",
+                "provider": "ULPF ML Engine",
+                "type": "anomaly_score",
+                "value": str(fe.ml_analysis.anomaly_score),
+                "data": {
+                    "risk_level": fe.ml_analysis.risk_level.value,
+                    "is_anomalous": fe.ml_analysis.is_anomalous,
+                    "model_version": fe.ml_analysis.model_version,
+                    "shannon_entropy": fe.ml_analysis.shannon_entropy,
+                },
+            }],
         }
+
+        if classification:
+            doc["enrichments"].append({
+                "name": "ulpf.classification",
+                "provider": "ULPF Taxonomy Classifier",
+                "type": "classification",
+                "value": classification.get("threat_class", "unclassified"),
+                "data": {
+                    "confidence": classification.get("confidence"),
+                    "mitre_techniques": classification.get("mitre_techniques", []),
+                    "evidence": classification.get("evidence", []),
+                },
+            })
+
+        if fe.threat and fe.threat.signature:
+            doc["finding_info"] = {
+                "title": fe.threat.signature,
+                "uid": fe.event_id,
+                "types": [fe.threat.category] if fe.threat.category else [],
+            }
+
+        return doc
+
+    def _observables(self, fe: ULPFFinalEvent) -> List[Dict[str, Any]]:
+        """OCSF observables let a consumer pivot on IOCs without reparsing.
+
+        type_id values: 2 = IP Address, 11 = Hostname, 8 = Port.
+        """
+        obs: List[Dict[str, Any]] = []
+        for value, name, type_id in (
+            (fe.source.ip, "src_endpoint.ip", 2),
+            (fe.destination.ip, "dst_endpoint.ip", 2),
+            (fe.destination.domain, "dst_endpoint.hostname", 11),
+        ):
+            if value:
+                obs.append({"name": name, "type_id": type_id, "value": str(value)})
+        return obs
 
     def to_columnar_flat(self, fe: ULPFFinalEvent) -> Dict[str, Any]:
         """Produces a flat dictionary ready for Parquet / Arrow / DuckDB columnar ingestion."""
