@@ -1,0 +1,36 @@
+# Build context hygiene.
+#
+# Without this file the context is ~424 MB on a machine that has trained the
+# model - the 271 MB corpus plus 131 MB of node_modules - all of which Docker
+# uploads to its daemon on every build, for nothing. The image needs the source,
+# the frontend package manifests, and the trained model. Nothing else.
+
+# Training corpus - never needed in the image; the model ships pre-trained
+data/
+
+# Node modules are reinstalled inside the frontend build stage
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Python bytecode and test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local databases - the container uses its own volume at /data
+*.db
+*.db-shm
+*.db-wal
+
+# Version control and editor state
+.git/
+.gitignore
+.claude/
+
+# Scratch
+*.zip
+Smart India Hackathon.html
+Smart India Hackathon_files/
