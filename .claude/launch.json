@@ -2,10 +2,51 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "ulpf-backend",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "backend.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
+      ],
+      "port": 8000
+    },
+    {
       "name": "ulpf-frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "frontend"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "frontend"
+      ],
       "port": 5173
+    },
+    {
+      "name": "sambhav-client",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "C:/Users/purva/Desktop/sambhav/client"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "sambhav-official-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "C:/Users/purva/sambhav/SambhavofficialFrontend-main/SambhavofficialFrontend-main"
+      ],
+      "port": 8080
     }
   ]
 }

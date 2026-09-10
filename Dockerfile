@@ -19,6 +19,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy Backend Code
 COPY backend/ ./backend/
 
+# Copy the trained fusion model. Without this the container starts in
+# heuristic mode - it still works, but it is not the product we trained.
+COPY models/ ./models/
+
 # Copy Built Frontend to Static Directory
 COPY --from=frontend-builder /app/frontend/dist /app/static
 
@@ -31,6 +35,7 @@ EXPOSE 8000
 ENV PYTHONUNBUFFERED=1 \
     ULPF_STATIC_DIR=/app/static \
     ULPF_DB_PATH=/data/ulpf_events.db \
+    ULPF_MODEL_PATH=/app/models/ulpf_fusion.pkl \
     ULPF_LOG_LEVEL=INFO
 
 # Health check using local API endpoint

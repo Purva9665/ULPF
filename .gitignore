@@ -1,0 +1,24 @@
+# Training corpus - 271 MB, downloaded by scripts/fetch_corpus.py, never committed
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Local databases (SQLite WAL) - regenerated at runtime
+*.db
+*.db-shm
+*.db-wal
+
+# Scratch / archives
+*.zip
+Smart India Hackathon.html
+Smart India Hackathon_files/

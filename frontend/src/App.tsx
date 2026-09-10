@@ -26,6 +26,7 @@ import { HistoryDrawer } from './components/HistoryDrawer';
 import { ExportViewerModal } from './components/ExportViewerModal';
 
 // Redesigned Workspaces & Views
+import { DetectionsView } from './views/DetectionsView';
 import { DashboardView } from './views/DashboardView';
 import { DemoView } from './views/DemoView';
 import { IngestionView } from './views/IngestionView';
@@ -41,7 +42,7 @@ import { EventJourneyView } from './views/EventJourneyView';
 
 export const App: React.FC = () => {
   // Navigation: 'overview' | 'ingestion' | 'parser' | 'normalization' | 'validation' | 'storage' | 'ml' | 'export' | 'analytics' | 'explorer' | 'journey'
-  const [activeTab, setActiveTab] = useState<string>('demo');
+  const [activeTab, setActiveTab] = useState<string>('detections');
 
   // Mode & Streaming State
   const [mode, setMode] = useState<'STREAM' | 'DEBUG'>('STREAM');
@@ -360,6 +361,7 @@ export const App: React.FC = () => {
         <main style={{ padding: '24px 28px', flex: 1, display: 'flex', flexDirection: 'column' }}>
           
           {/* OVERVIEW / DASHBOARD */}
+          {activeTab === 'detections' && <DetectionsView />}
           {activeTab === 'demo' && <DemoView />}
 
           {activeTab === 'overview' && (

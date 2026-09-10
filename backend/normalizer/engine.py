@@ -17,13 +17,94 @@ from backend.core.models import (
     ObserverDetails,
     ActionEnum,
     SeverityEnum,
+    ExtractionMethod,
+    FieldProvenance,
 )
 from backend.normalizer.mappings import (
     ACTION_MAP, SEVERITY_MAP, WELL_KNOWN_PORTS, FIELD_ALIASES,
-    ASA_MNEMONIC_ACTION, ZEEK_CONN_STATE,
+    ASA_MNEMONIC_ACTION, ZEEK_CONN_STATE, IP_PROTOCOL_NUMBERS,
 )
 from backend.normalizer.taxonomy import default_classifier
 from backend.normalizer.netscope import default_scope
+
+
+class ProvenanceRecorder:
+    """Accumulates per-field origin and confidence during one normalization.
+
+    Confidence is not a single number for the event. It is per field, because
+    a parser can be certain about the source IP it matched on a named capture
+    group and uncertain about a port it recovered from a positional token.
+    Collapsing those into one event-level score - which is all any wire format
+    between a pipeline and a SIEM can carry - is exactly the information loss
+    this class exists to prevent.
+
+    Confidence is derived from two things:
+
+    * **The parser's own confidence in the event.** A low-confidence parse
+      cannot yield high-confidence fields.
+    * **Alias specificity.** `FIELD_ALIASES` lists candidate keys in order of
+      decreasing specificity: the first entries are the vendor's own field
+      names, later ones are generic fallbacks. A value matched on `src_ip` is
+      better evidence than the same value matched on a generic `ip`, and the
+      match position is a free, honest measure of that.
+    """
+
+    #: Confidence floor from alias fallback alone. A late-alias match is
+    #: weaker evidence, not worthless evidence.
+    MIN_ALIAS_CONFIDENCE = 0.75
+
+    def __init__(self, parser_name: str, parser_confidence: float):
+        self.parser_name = parser_name
+        self.parser_confidence = max(0.0, min(1.0, float(parser_confidence)))
+        self.records: Dict[str, FieldProvenance] = {}
+
+    def extracted(self, path: str, source_key: str, alias_rank: int = 0) -> None:
+        penalty = max(self.MIN_ALIAS_CONFIDENCE, 1.0 - 0.05 * alias_rank)
+        note = None
+        if alias_rank > 0:
+            note = (f"matched on fallback alias '{source_key}' "
+                    f"(rank {alias_rank}), not the vendor's primary field name")
+        self.records[path] = FieldProvenance(
+            source_key=source_key,
+            parser=self.parser_name,
+            method=ExtractionMethod.EXTRACTED,
+            confidence=round(self.parser_confidence * penalty, 4),
+            note=note,
+        )
+
+    def derived(self, path: str, note: str, confidence: float = 0.9) -> None:
+        self.records[path] = FieldProvenance(
+            source_key=None,
+            parser=self.parser_name,
+            method=ExtractionMethod.DERIVED,
+            confidence=round(self.parser_confidence * confidence, 4),
+            note=note,
+        )
+
+    def inferred(self, path: str, note: str, confidence: float = 0.6) -> None:
+        self.records[path] = FieldProvenance(
+            source_key=None,
+            parser=self.parser_name,
+            method=ExtractionMethod.INFERRED,
+            confidence=round(self.parser_confidence * confidence, 4),
+            note=note,
+        )
+
+    def defaulted(self, path: str, note: str, confidence: float = 0.3) -> None:
+        """Record that the source carried nothing and a default was applied.
+
+        This is the case that matters most. A field silently defaulted looks
+        identical downstream to one the device actually reported, and a
+        detector relying on it is reasoning about an assumption made in our
+        own code rather than about anything the device observed.
+        """
+        self.records[path] = FieldProvenance(
+            source_key=None,
+            parser=self.parser_name,
+            method=ExtractionMethod.DEFAULTED,
+            confidence=round(confidence, 4),
+            note=note,
+        )
 
 
 class NormalizationEngine:
@@ -31,6 +112,7 @@ class NormalizationEngine:
     Stage 3: NORMALIZATION
     Maps vendor-specific parsed keys into canonical schema namespaces.
     Unmapped vendor fields are retained in `unmapped_fields` for complete zero-loss preservation.
+    Per-field origin and confidence are recorded in `field_provenance`.
     """
 
     def __init__(self):
@@ -40,14 +122,18 @@ class NormalizationEngine:
         t0 = time.perf_counter_ns()
         fields = dict(parsed_event.extracted_fields)
         consumed_keys = set()
+        rec = ProvenanceRecorder(
+            parser_name=parsed_event.parser_name,
+            parser_confidence=parsed_event.confidence_score,
+        )
 
         # 1. Event Metadata
-        action_val = self._find_first(fields, FIELD_ALIASES["event.action"], consumed_keys)
+        action_val = self._find(fields, "event.action", consumed_keys, rec)
         canonical_action = self._normalize_action(action_val)
         if canonical_action is ActionEnum.UNKNOWN:
             canonical_action = self._action_from_vendor_code(fields, consumed_keys)
 
-        severity_val = self._find_first(fields, FIELD_ALIASES["event.severity"], consumed_keys)
+        severity_val = self._find(fields, "event.severity", consumed_keys, rec)
         canonical_severity = self._normalize_severity(severity_val)
 
         timestamp_val = self._extract_timestamp(fields, consumed_keys)
@@ -64,10 +150,10 @@ class NormalizationEngine:
         )
 
         # 2. Source Endpoint
-        src_ip = self._find_first(fields, FIELD_ALIASES["source.ip"], consumed_keys)
-        src_port = self._find_first(fields, FIELD_ALIASES["source.port"], consumed_keys)
-        src_pkts = self._find_first(fields, FIELD_ALIASES["source.packets"], consumed_keys)
-        src_bytes = self._find_first(fields, FIELD_ALIASES["source.bytes"], consumed_keys)
+        src_ip = self._find(fields, "source.ip", consumed_keys, rec)
+        src_port = self._find(fields, "source.port", consumed_keys, rec)
+        src_pkts = self._find(fields, "source.packets", consumed_keys, rec)
+        src_bytes = self._find(fields, "source.bytes", consumed_keys, rec)
         
         src_port_int = self._to_int(src_port)
         src_is_private = default_scope.is_internal(src_ip)
@@ -82,10 +168,10 @@ class NormalizationEngine:
         )
 
         # 3. Destination Endpoint
-        dst_ip = self._find_first(fields, FIELD_ALIASES["destination.ip"], consumed_keys)
-        dst_port = self._find_first(fields, FIELD_ALIASES["destination.port"], consumed_keys)
-        dst_pkts = self._find_first(fields, FIELD_ALIASES["destination.packets"], consumed_keys)
-        dst_bytes = self._find_first(fields, FIELD_ALIASES["destination.bytes"], consumed_keys)
+        dst_ip = self._find(fields, "destination.ip", consumed_keys, rec)
+        dst_port = self._find(fields, "destination.port", consumed_keys, rec)
+        dst_pkts = self._find(fields, "destination.packets", consumed_keys, rec)
+        dst_bytes = self._find(fields, "destination.bytes", consumed_keys, rec)
 
         dst_port_int = self._to_int(dst_port)
         dst_is_private = default_scope.is_internal(dst_ip)
@@ -101,27 +187,86 @@ class NormalizationEngine:
         )
 
         # 4. Network Details
-        protocol = self._find_first(fields, FIELD_ALIASES["network.protocol"], consumed_keys) or "TCP"
-        session_id = self._find_first(fields, FIELD_ALIASES["network.session_id"], consumed_keys)
-        total_bytes = self._find_first(fields, FIELD_ALIASES["network.bytes_total"], consumed_keys)
-        total_pkts = self._find_first(fields, FIELD_ALIASES["network.packets_total"], consumed_keys)
+        protocol = self._find(fields, "network.protocol", consumed_keys, rec)
+        # FortiGate, PAN-OS and NetFlow-derived sources report the protocol as
+        # an IANA number. Stored verbatim it becomes the literal string "6",
+        # which matches nothing downstream - not the taxonomy classifier, not
+        # the routing rules, not an analyst's query.
+        if protocol is not None:
+            resolved = self._protocol_from_number(protocol)
+            if resolved is not None:
+                rec.derived(
+                    "network.protocol",
+                    f"resolved IANA protocol number {protocol} to {resolved}",
+                    confidence=0.98,
+                )
+                protocol = resolved
+        if not protocol:
+            # The source carried no protocol. TCP is the right guess for
+            # perimeter traffic but it remains a guess, and a detector that
+            # keys on protocol deserves to know that.
+            protocol = "TCP"
+            rec.defaulted(
+                "network.protocol",
+                "source carried no protocol field; defaulted to TCP",
+            )
+        session_id = self._find(fields, "network.session_id", consumed_keys, rec)
+        total_bytes = self._find(fields, "network.bytes_total", consumed_keys, rec)
+        total_pkts = self._find(fields, "network.packets_total", consumed_keys, rec)
 
-        direction = default_scope.direction(src_ip, dst_ip, fields.get("direction"))
+        explicit_direction = fields.get("direction")
+        direction = default_scope.direction(src_ip, dst_ip, explicit_direction)
+        if explicit_direction:
+            rec.extracted("network.direction", source_key="direction")
+        elif src_ip and dst_ip:
+            rec.derived(
+                "network.direction",
+                "computed from source and destination address scope",
+            )
+        else:
+            rec.inferred(
+                "network.direction",
+                "one or both addresses missing; direction is a partial inference",
+                confidence=0.4,
+            )
+
+        bytes_total = self._to_int(total_bytes)
+        if not bytes_total:
+            bytes_total = (source.bytes or 0) + (destination.bytes or 0) or None
+            if bytes_total:
+                rec.derived("network.bytes_total",
+                            "summed from source and destination byte counts")
+        packets_total = self._to_int(total_pkts)
+        if not packets_total:
+            packets_total = (source.packets or 0) + (destination.packets or 0) or None
+            if packets_total:
+                rec.derived("network.packets_total",
+                            "summed from source and destination packet counts")
+
+        # A service name resolved from a port number is an inference about what
+        # is listening, not an observation of it. Port 8080 is very often not
+        # HTTP proxy traffic.
+        if destination.service:
+            rec.inferred("destination.service",
+                         f"inferred from destination port {destination.port}")
+        if source.service:
+            rec.inferred("source.service",
+                         f"inferred from source port {source.port}")
 
         network = NetworkDetails(
             protocol=str(protocol).upper(),
             transport="IP",
             direction=direction,
-            bytes_total=self._to_int(total_bytes) or ((source.bytes or 0) + (destination.bytes or 0) or None),
-            packets_total=self._to_int(total_pkts) or ((source.packets or 0) + (destination.packets or 0) or None),
+            bytes_total=bytes_total,
+            packets_total=packets_total,
             session_id=str(session_id) if session_id else None,
             flags=str(fields.get("flags", "")) if "flags" in fields else None,
         )
 
         # 5. Threat Details
-        threat_sig = self._find_first(fields, FIELD_ALIASES["threat.signature"], consumed_keys)
-        threat_cat = self._find_first(fields, FIELD_ALIASES["threat.category"], consumed_keys)
-        threat_ind = self._find_first(fields, FIELD_ALIASES["threat.indicator"], consumed_keys)
+        threat_sig = self._find(fields, "threat.signature", consumed_keys, rec)
+        threat_cat = self._find(fields, "threat.category", consumed_keys, rec)
+        threat_ind = self._find(fields, "threat.indicator", consumed_keys, rec)
         
         threat: Optional[ThreatDetails] = None
         if threat_sig or threat_cat or threat_ind or canonical_severity in (SeverityEnum.HIGH, SeverityEnum.CRITICAL):
@@ -163,7 +308,7 @@ class NormalizationEngine:
             threat.mitre_technique_id = classification.mitre_techniques[0]
 
         # 6. Observer Details
-        obs_host = self._find_first(fields, FIELD_ALIASES["observer.hostname"], consumed_keys)
+        obs_host = self._find(fields, "observer.hostname", consumed_keys, rec)
         raw_ver = fields.get("device_version") or fields.get("version")
         observer = ObserverDetails(
             vendor=parsed_event.parser_vendor,
@@ -190,9 +335,42 @@ class NormalizationEngine:
             threat=threat,
             observer=observer,
             unmapped_fields=unmapped,
+            field_provenance=rec.records,
             mapping_rule_used="canonical_ulpf_v1",
             normalization_duration_us=duration_us,
         )
+
+    @staticmethod
+    def _protocol_from_number(value: Any) -> Optional[str]:
+        """Resolve an IANA protocol number to its canonical name.
+
+        Returns None when the value is not a bare number, so a source that
+        already reports "TCP" passes through untouched.
+        """
+        text = str(value).strip()
+        if not text.isdigit():
+            return None
+        return IP_PROTOCOL_NUMBERS.get(int(text))
+
+    def _find(
+        self,
+        fields: Dict[str, Any],
+        path: str,
+        consumed_keys: set,
+        rec: "ProvenanceRecorder",
+    ) -> Any:
+        """Alias-resolving lookup that records where the value came from.
+
+        Identical resolution behaviour to `_find_first`; the difference is that
+        it knows the canonical path it is filling and the rank of the alias it
+        matched, which is what makes per-field confidence computable.
+        """
+        for rank, k in enumerate(FIELD_ALIASES[path]):
+            if k in fields and fields[k] is not None:
+                consumed_keys.add(k)
+                rec.extracted(path, source_key=k, alias_rank=rank)
+                return fields[k]
+        return None
 
     def _find_first(self, fields: Dict[str, Any], candidate_keys: list, consumed_keys: set) -> Any:
         for k in candidate_keys:

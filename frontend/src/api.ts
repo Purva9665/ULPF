@@ -203,3 +203,115 @@ export function connectWebSocket(
   };
   return ws;
 }
+
+/* ------------------------------------------------------------------ */
+/* Detections API - findings an analyst works, not events we scored.   */
+/* ------------------------------------------------------------------ */
+
+export interface DetectionSummary {
+  mode: 'trained' | 'heuristic';
+  model_path: string;
+  model_error: string | null;
+  threshold: number | null;
+  novelty_fitted: boolean;
+  entities_tracked: number;
+  events_seen: number;
+  events_anomalous: number;
+  detections_total: number;
+  detections_open: number;
+  events_per_detection: number;
+  alert_volume_reduction_pct: number;
+  entities_implicated: number;
+  degraded_evidence_detections: number;
+  by_severity: Record<string, number>;
+}
+
+export interface DetectionRow {
+  detection_id: string;
+  title: string;
+  entity: string;
+  threat_class: string;
+  severity: string;
+  confidence: number;
+  state: string;
+  event_count: number;
+  mitre_techniques: string[];
+  evidence_degraded: boolean;
+}
+
+export interface DetectionEvidence {
+  detector?: string;
+  signal: string;
+  observed: any;
+  argues: string;
+  weight: number;
+}
+
+export interface ContributingEventRow {
+  event_id: string;
+  timestamp: string;
+  raw_sha256: string;
+  probability: number;
+  src_ip: string | null;
+  dst_ip: string | null;
+  dst_port: number | null;
+  evidence_degraded: boolean;
+}
+
+export interface DetectionDetail extends DetectionRow {
+  evidence: DetectionEvidence[];
+  events: ContributingEventRow[];
+  peer_ips: string[];
+  ports_touched: number[];
+}
+
+export interface EntityRisk {
+  entity: string;
+  entity_type: string;
+  risk_score: number;
+  detection_count: number;
+  open_count: number;
+  max_confidence: number;
+}
+
+export async function fetchDetectionSummary(): Promise<DetectionSummary> {
+  const r = await fetch(`${getApiBase()}/api/detections/summary`);
+  if (!r.ok) throw new Error('Failed to fetch detection summary');
+  return r.json();
+}
+
+export async function fetchDetections(
+  limit = 50, offset = 0
+): Promise<{ total: number; detections: DetectionRow[] }> {
+  const r = await fetch(`${getApiBase()}/api/detections?limit=${limit}&offset=${offset}`);
+  if (!r.ok) throw new Error('Failed to fetch detections');
+  return r.json();
+}
+
+export async function fetchDetectionDetail(id: string): Promise<DetectionDetail> {
+  const r = await fetch(`${getApiBase()}/api/detections/${id}`);
+  if (!r.ok) throw new Error('Failed to fetch detection');
+  return r.json();
+}
+
+export async function fetchDetectionEntities(limit = 25): Promise<EntityRisk[]> {
+  const r = await fetch(`${getApiBase()}/api/detections/entities?limit=${limit}`);
+  if (!r.ok) throw new Error('Failed to fetch entities');
+  return (await r.json()).entities;
+}
+
+export async function replaySamplesIntoDetections(): Promise<any> {
+  const r = await fetch(`${getApiBase()}/api/detections/replay-samples`, { method: 'POST' });
+  if (!r.ok) throw new Error('Failed to replay samples');
+  return r.json();
+}
+
+export async function triageDetection(id: string, state: string, note = ''): Promise<any> {
+  const r = await fetch(`${getApiBase()}/api/detections/${id}/triage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state, note }),
+  });
+  if (!r.ok) throw new Error('Failed to update triage state');
+  return r.json();
+}

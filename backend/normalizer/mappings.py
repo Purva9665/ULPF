@@ -131,19 +131,24 @@ FIELD_ALIASES: Dict[str, List[str]] = {
         "bytes", "total_bytes", "byte_count", "bytes_total"
     ],
     "source.bytes": [
-        "bytes_sent", "orig_bytes", "orig_ip_bytes", "sentbyte", "src_bytes"
+        "bytes_sent", "orig_bytes", "orig_ip_bytes", "sentbyte", "src_bytes",
+        # Suricata EVE nests these under "flow"; the parser flattens with dots.
+        "flow.bytes_toserver", "bytes_toserver"
     ],
     "destination.bytes": [
-        "bytes_received", "resp_bytes", "resp_ip_bytes", "rcvdbyte", "dst_bytes"
+        "bytes_received", "resp_bytes", "resp_ip_bytes", "rcvdbyte", "dst_bytes",
+        "flow.bytes_toclient", "bytes_toclient"
     ],
     "network.packets_total": [
         "packets", "total_packets", "packet_count"
     ],
     "source.packets": [
-        "pkts_sent", "orig_pkts", "src_packets"
+        "pkts_sent", "orig_pkts", "src_packets",
+        "flow.pkts_toserver", "pkts_toserver"
     ],
     "destination.packets": [
-        "pkts_received", "resp_pkts", "dst_packets"
+        "pkts_received", "resp_pkts", "dst_packets",
+        "flow.pkts_toclient", "pkts_toclient"
     ],
     # Action
     "event.action": [
@@ -230,3 +235,15 @@ ZEEK_CONN_STATE = {
 
 #: Zeek conn_states that indicate scanning behaviour when seen from one source.
 ZEEK_SCAN_STATES = frozenset({"S0", "REJ", "RSTOS0", "SH"})
+
+#: IANA IP protocol numbers to canonical names.
+#: FortiGate, Palo Alto and NetFlow-derived sources report the protocol as an
+#: IANA number, not a name. Without this table the normalizer stores the string
+#: "6" as the protocol, which silently breaks every downstream consumer that
+#: compares against "TCP" - including the taxonomy classifier and the SIEM
+#: routing rules.
+#: Reference: IANA Assigned Internet Protocol Numbers.
+IP_PROTOCOL_NUMBERS = {
+    0: "HOPOPT", 1: "ICMP", 2: "IGMP", 6: "TCP", 17: "UDP", 41: "IPV6",
+    47: "GRE", 50: "ESP", 51: "AH", 58: "IPV6-ICMP", 89: "OSPF", 132: "SCTP",
+}

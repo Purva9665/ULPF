@@ -59,6 +59,7 @@ services:
       # - ULPF_PG_USER=svc_ulpf
       # - ULPF_PG_PASSWORD=ulpf_proc_changeme
       - ULPF_STATIC_DIR=/app/static
+      - ULPF_MODEL_PATH=/app/models/ulpf_fusion.pkl
     volumes:
       - ulpf-data:/data
     restart: unless-stopped

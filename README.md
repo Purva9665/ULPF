@@ -1,141 +1,300 @@
-<<<<<<< HEAD
 # ULPF — Universal Log Pre-processing Framework
 
-> **A functional, zero-loss log pre-processing pipeline and visual engine control room for heterogeneous perimeter network telemetry.**
+**Smart India Hackathon 2026 · Problem Statement SIH26156 · NTRO**
+
+Ingests logs from any perimeter device, parses and normalizes them into a
+lossless universal schema, and turns them into **detections an analyst can
+work** — not a stream of scored events.
 
 ---
 
-## 1. Overview & Pipeline Flow
+## Quick start
 
-```
-Heterogeneous Perimeter Logs (Cisco ASA, Palo Alto, Suricata, AWS VPC, Zeek, CEF, Syslog)
-                                       │
-                                       ▼
-                     ┌───────────────────────────────────┐
-                     │         [01] INGESTION            │  Zero-loss Raw Capture & SHA-256 Digest
-                     └─────────────────┬─────────────────┘
-                                       ▼
-                     ┌───────────────────────────────────┐
-                     │          [02] PARSING             │  Multi-Dialect Plug-and-Play AST
-                     └─────────────────┬─────────────────┘
-                                       ▼
-                     ┌───────────────────────────────────┐
-                     │       [03] NORMALIZATION          │  Canonical ULPF Schema & Unmapped Retain
-                     └─────────────────┬─────────────────┘
-                                       ▼
-                     ┌───────────────────────────────────┐
-                     │        [04] VALIDATION            │  Semantic Rules & DQI Scoring
-                     └─────────────────┬─────────────────┘
-                                       ▼
-                     ┌───────────────────────────────────┐
-                     │          [05] STORAGE             │  Dual SQLite WAL & Columnar Storage
-                     └─────────────────┬─────────────────┘
-                                       ▼
-                     ┌───────────────────────────────────┐
-                     │      [06] ML ANOMALY ENGINE       │  Local Isolation Forest & Entropy
-                     └─────────────────┬─────────────────┘
-                                       ▼
-                     ┌───────────────────────────────────┐
-                     │     [07] STANDARDIZED EVENT       │  SIEM (Elastic ECS, Splunk HEC, OCSF)
-                     └───────────────────────────────────┘
-```
+Two ways to run it.
 
----
+> **Verification status, so you know what to expect:** Option B (local) is the
+> path that has been run end-to-end and confirmed working. Docker is configured
+> but **could not be tested** on the machine this was built on — Docker was not
+> installed there. If Option A gives you trouble, use Option B; it is known good.
 
-## 2. 15 Non-Negotiable Functional Requirements
+### Option A — Docker (not yet verified)
 
-| # | Functional Requirement | Technical Implementation |
-|---|---|---|
-| 1 | **Preserve complete raw event data** | Pristine byte sequence preserved with SHA-256 cryptographic digest. |
-| 2 | **Parse heterogeneous log formats** | Built-in parsers for Cisco ASA, Palo Alto PAN-OS, Suricata EVE, AWS VPC Flow, Zeek, CEF, Key-Value, Syslog, Windows Event. |
-| 3 | **Extract source-specific fields** | Intermediate AST token dictionaries captured in `ULPFParsedEvent`. |
-| 4 | **Normalize fields into a common schema** | Canonical namespace taxonomy: `event.*`, `source.*`, `destination.*`, `network.*`, `threat.*`, `observer.*`, `unmapped_fields`. |
-| 5 | **Validate normalized events** | Semantic constraint engine, IP format, port range (0-65535), Data Quality Index (0-100%). |
-| 6 | **Maintain traceability** | Event UUID, SHA-256 hash match, transformation history, microsecond stage latencies. |
-| 7 | **Support plug-and-play parser architecture** | `BaseParser` abstract class with dynamic capability detection, confidence scoring, and `ParserRegistry`. |
-| 8 | **Store raw and normalized representations** | Dual storage in SQLite WAL and in-memory columnar dataframe layout. |
-| 9 | **Provide analytics-ready output** | Splunk HEC, Elastic ECS 8.x, OCSF v1.1, S3 Parquet format exporters. |
-| 10 | **Provide ML-ready output** | Numeric vectorizer, categorical encodings, Shannon entropy, Isolation Forest anomaly score, feature attribution. |
-| 11 | **Support local/offline execution** | 100% self-contained, zero cloud or external API dependencies. |
-| 12 | **Support Docker/container deployment** | Multi-stage `Dockerfile` and `docker-compose.yml`. |
-| 13 | **Avoid dependency on cloud AI APIs** | Local Scikit-learn Isolation Forest + Statistical Z-score + Shannon Entropy running locally. |
-| 14 | **Use real backend processing** | Real cryptographic hashing, parsing, normalizations, schema validations, SQLite transactions, and ML scoring. |
-| 15 | **Never hardcode fake processing results** | Live state transitions and intermediate payloads reflect actual computed state. |
-
----
-
-## 3. Quick Start
-
-### Option A: Local Execution (Recommended)
-
-1. **Install Backend Dependencies**:
-   ```bash
-   pip install -r backend/requirements.txt
-   ```
-
-2. **Install Frontend Dependencies**:
-   ```bash
-   cd frontend
-   npm install
-   ```
-
-3. **Start the System**:
-   - **Windows**: Double-click `run.bat` or run:
-     ```bash
-     python -m uvicorn backend.main:app --port 8000 --reload
-     # In another terminal:
-     cd frontend && npm run dev
-     ```
-   - **Linux / macOS**:
-     ```bash
-     chmod +x run.sh && ./run.sh
-     ```
-
-4. Open **`http://localhost:5173`** in your browser to access the **ULPF Live Engine Control Room**.
-5. Backend REST & Swagger docs: **`http://localhost:8000/docs`**.
-
----
-
-### Option B: Offline Docker Deployment (Zero Internet Required)
-
-1. **Initial Build (Once with Internet)**:
-   ```bash
-   docker compose build
-   ```
-
-2. **Offline Local Startup (No Internet Required)**:
-   ```bash
-   docker compose up -d
-   ```
-
-3. **Access Control Room & Services**:
-   - **Full UI & Engine**: [http://localhost:8000](http://localhost:8000)
-   - **Health Check Endpoint**: [http://localhost:8000/api/health](http://localhost:8000/api/health)
-   - **API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
-
-4. **Persistent Data Storage**:
-   - Normalized events and SQLite database are persisted inside the named volume `ulpf-data` (`/data/ulpf_events.db`).
-   - Stopping and restarting containers (`docker compose restart` or `docker compose down && docker compose up -d`) preserves all stored events and ML telemetry.
-
----
-
-## 4. Running Automated Tests
-
-Run the full automated test suite verifying all 15 requirements:
+Needs [Docker Desktop](https://www.docker.com/products/docker-desktop/) only.
+No Python, no Node.
 
 ```bash
-python -m pytest tests/ -v
+git clone https://github.com/Purva9665/ULPF.git
+```
+
+```bash
+cd ULPF && docker compose up --build
+```
+
+Then open **http://localhost:8000**
+
+First build takes 3–5 minutes (it compiles the frontend and installs Python
+packages). Later starts take seconds.
+
+To stop it:
+
+```bash
+docker compose down
+```
+
+### Option B — Run locally without Docker (verified working)
+
+Needs **Python 3.11+** and **Node 20+**.
+
+```bash
+git clone https://github.com/Purva9665/ULPF.git && cd ULPF
+```
+
+**1. Backend**
+
+```bash
+python -m venv .venv && .venv/Scripts/activate && pip install -r backend/requirements.txt
+```
+
+On macOS/Linux the activate line is `source .venv/bin/activate` instead.
+
+**2. Frontend** (in the same folder)
+
+```bash
+cd frontend && npm install && npm run build && cd ..
+```
+
+**3. Start it**
+
+```bash
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+Open **http://localhost:8000**.
+
+> Building the frontend once (step 2) means the Python server serves the UI
+> too, so you only run one process. For frontend development with hot reload,
+> run `npm run dev --prefix frontend` in a second terminal and use port 5173.
+
+---
+
+## Using the prototype
+
+The app opens on **Detections**.
+
+1. Click **Run sample logs** — pushes 12 bundled sample events (Cisco ASA,
+   Palo Alto, Suricata, AWS VPC Flow, Zeek, CEF, FortiGate, Windows, nginx,
+   iptables) through the full pipeline.
+2. The **detection queue** fills. Each row is one finding, not one event.
+3. Click a detection to see **why it was flagged** — the weighted evidence
+   behind the verdict, including evidence *against*, its MITRE ATT&CK mapping,
+   and the contributing raw events with their SHA-256 hashes.
+4. Mark it **Investigating / Confirmed / False positive**.
+
+The badge at the top right says **TRAINED MODEL** when the shipped model
+loaded, or **HEURISTIC** if it did not — the app never hides which one is
+running.
+
+Other tabs (Pipeline, Demo, Log Explorer, Event Journey) show the underlying
+stage-by-stage processing.
+
+---
+
+## What's inside
+
+### Pipeline
+
+```
+raw log → INGEST → PARSE → NORMALIZE → VALIDATE → STORE → DETECT → EXPORT
+          (SHA-256) (10 parsers) (OCSF 1.9)  (DQI)  (SQLite)  (ensemble)
+```
+
+### Detection model
+
+| Layer | What it does | Why this choice |
+|---|---|---|
+| **Rules** | Taxonomy + MITRE + known indicators | Works on event one, no warm-up |
+| **Behaviour** | Compares an event to that entity's own baseline | Scans and brute force look normal per-event; only the *shape* gives them away |
+| **Temporal** | Burst, failure runs, **beaconing** | Beaconing catches C2 by its regularity — inter-arrival coefficient of variation |
+| **Novelty** | **ECOD** + Isolation Forest | ECOD is parameter-free, deterministic, and gives per-feature attribution for free |
+| **Fusion** | HistGradientBoosting + isotonic calibration | Output is a real probability an analyst can threshold, not an arbitrary score |
+
+ECOD is implemented in-tree (`backend/ml/detectors/novelty.py`) rather than
+pulled from PyOD — it's ~40 lines of NumPy and an offline air-gapped bundle
+shouldn't carry a dependency for that.
+
+### Technology used
+
+| Area | Technology |
+|---|---|
+| Backend | Python 3.11+, FastAPI, Uvicorn, Pydantic v2, WebSockets |
+| ML | scikit-learn (HistGradientBoosting, isotonic calibration, IsolationForest), NumPy |
+| Frontend | React 19, TypeScript, Vite 8, lucide-react |
+| Storage | SQLite (WAL mode) — three logical stores: primary, SIEM, data lake |
+| Packaging | Docker multi-stage build, docker compose |
+| Schema | OCSF 1.9.0, MITRE ATT&CK |
+| Training data | CIC-IDS2017 (ICISSP 2018) |
+
+No runtime network calls, no CDN fonts, no external APIs — the whole thing runs
+air-gapped.
+
+---
+
+## Tests
+
+```bash
+python -m pytest tests/ -q
+```
+
+164 tests. They do not need the training corpus — corpus-dependent tests skip
+automatically when it is absent.
+
+---
+
+## Retraining the model (optional)
+
+Not needed to run the prototype. A trained model ships in `models/`.
+
+**1. Fetch the corpus** (~271 MB, downloaded once, git-ignored)
+
+```bash
+python scripts/fetch_corpus.py
+```
+
+This verifies the download against the published flow count (2,830,743) so a
+tampered or truncated mirror is caught.
+
+**2. Train and evaluate**
+
+```bash
+python scripts/train_and_evaluate.py --per-day 120000
+```
+
+Takes roughly 40 minutes. Writes `models/ulpf_fusion.pkl` and
+`docs/model_evaluation.json`.
+
+**3. Other experiments**
+
+```bash
+python scripts/usp1_experiment.py
+```
+
+```bash
+python scripts/measure_detections.py
 ```
 
 ---
 
-## 5. Live Engine Control Room Features
+## Measured results
 
-- **Live Streaming Mode**: Continuous stream with adjustable EPS slider (1–20 EPS) and real-time WebSocket state machine pulses.
-- **Interactive Step-by-Step Debugger**: Step through individual stages (`Step ➔`, `Reset ↺`, `Fast-Forward ⏩`) and inspect intermediate artifacts at each node.
-- **Stage Drill-Down Inspectors**: Deep technical inspection for Raw Payload / Hex View, AST Token Matrix, Canonical Schema Mapping, Validation DQI Rules, SQLite WAL storage, and Explainable ML Feature Contribution Waterfall.
-- **Custom Ingestion Test Bench**: Paste any custom firewall or security log, choose auto-detection or explicit parser, and test the pipeline live.
-- **SIEM & Data Lake Exporter**: Live preview and download for Elastic Common Schema (ECS), Splunk HEC, OCSF v1.1, and Parquet flat columnar JSON.
-=======
-# ulpf
->>>>>>> 076c845efbad95e56934b0dbf2f9d229828c70e7
+Trained on 600,000 flows from CIC-IDS2017, evaluated under two protocols fixed
+*before* results were seen (see `docs/IMPLEMENTATION_PLAN.md`).
+
+**Protocol A — chronological within day.** Earliest 70% of each capture day
+trains, latest 30% tests. No shuffle leakage.
+
+| Metric | Value |
+|---|---|
+| PR-AUC | **0.9868** |
+| Precision | 0.9593 |
+| Recall | 0.9851 |
+| F1 | 0.972 |
+| False positives per 10k benign | 59.5 |
+
+**Protocol B — cross-day, zero-shot.** Trains Mon–Wed, tests Thu–Fri, where
+every test attack family is one the model has never seen.
+
+| Metric | Value |
+|---|---|
+| PR-AUC | **0.4158** |
+| Recall | 0.9336 |
+| Precision | 0.4206 |
+| False positives per 10k benign | 3375.9 |
+
+**Ablation (Protocol A)** — what each layer contributes alone:
+
+| Configuration | PR-AUC | F1 | FP/10k |
+|---|---|---|---|
+| rules only | 0.1735 | 0.2394 | 922.0 |
+| behaviour only | 0.1408 | 0.2595 | 8096.3 |
+| temporal only | 0.8352 | 0.9023 | 159.3 |
+| novelty only | 0.1083 | 0.2645 | 7187.8 |
+| **fused ensemble** | **0.9868** | **0.972** | **59.5** |
+
+---
+
+## Honest limitations
+
+These are stated here rather than discovered later.
+
+- **Protocol B is poor.** On attack families it has never seen, precision drops
+  to 0.42 and false positives rise sharply. Recall stays high (0.93), so the
+  ensemble still *fires* on unseen attacks — it just fires on a lot else too.
+- **The confidence-feature mechanism did not work.** Feeding per-field parse
+  confidence into detection was tested against a control and made false
+  positives *worse* (clean: 154.2 vs 105.7 FP/10k; degraded: 906.6 vs 847.4).
+  Reported as a null result in `docs/usp1_experiment.json`. The provenance
+  layer still has value for auditing; it did not improve detection.
+- **Sampling artifact.** Training sampled 120,000 flows per capture day, which
+  thins the event stream and therefore understates true event rates. The
+  temporal detector measures events per 60 seconds of real time, so its
+  contribution is likely *understated* here.
+- **CIC-IDS2017 is a 2017 single-network capture** with documented label
+  defects (Engelen et al., 2021). Classes with fewer than 100 samples
+  (Heartbleed n=11, SQL Injection n=21, Infiltration n=36) are reported as
+  *insufficient data*, never as a percentage.
+- **Throughput is ~1,200 EPS single-process.** The "billions of events per day"
+  target needs horizontal scale-out; that is designed for but not measured.
+- **Storage is SQLite.** ClickHouse is the intended production store and is not
+  implemented yet.
+
+---
+
+## Repository layout
+
+```
+backend/
+  core/          models, parser registry
+  ingestion/     SHA-256 chain of custody
+  parsers/       10 parsers + Drain adaptive tier
+  normalizer/    OCSF mapping, taxonomy, field provenance
+  validator/     data quality scoring
+  storage/       SQLite WAL engine
+  ml/
+    profiles.py    entity behaviour baselines
+    features.py    44 features in 3 families
+    detectors/     rules, behaviour, temporal, novelty (ECOD)
+    fusion.py      calibrated ensemble
+    engine.py      orchestration
+    eval/          corpus loader, replay, harness, degradation
+  detections/    Detection object, correlator, service
+  main.py        FastAPI app
+frontend/src/
+  views/DetectionsView.tsx   the product home screen
+scripts/         fetch_corpus, train_and_evaluate, experiments
+tests/           164 tests
+docs/            plan, evaluation results, architecture
+models/          trained fusion model
+```
+
+---
+
+## Troubleshooting
+
+**Port 8000 already in use** — run on another port and tell the frontend:
+
+```bash
+python -m uvicorn backend.main:app --port 8080
+```
+
+**`docker compose` not recognised** — older Docker uses a hyphen:
+
+```bash
+docker-compose up --build
+```
+
+**Frontend shows no data** — the backend isn't running, or is on a different
+port. Check http://localhost:8000/api/health returns JSON.
+
+**Badge says HEURISTIC instead of TRAINED MODEL** — `models/ulpf_fusion.pkl` is
+missing. It ships in the repo; if you deleted it, retrain or restore it. The app
+still works, just less accurately.

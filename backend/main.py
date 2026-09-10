@@ -23,12 +23,14 @@ from backend.core.models import (
 from backend.core.registry import default_registry
 from backend.pipeline.orchestrator import PipelineOrchestrator
 from backend.sample_data import SAMPLE_LOGS
+from backend.detections.service import DetectionService
 
 # Configurable persistent SQLite WAL DB path from environment
 db_path = os.getenv("ULPF_DB_PATH", "ulpf_events.db")
 
 # Global orchestrator instance with persistent disk SQLite WAL DB
 orchestrator = PipelineOrchestrator(registry=default_registry, db_path=db_path)
+detection_service = DetectionService()
 
 # Background streamer task reference
 stream_task: Optional[asyncio.Task] = None
@@ -394,6 +396,129 @@ async def websocket_endpoint(websocket: WebSocket):
 # Static Files & Offline Single-Port SPA Serving
 # ==========================================
 # Priority: ULPF_STATIC_DIR environment variable -> /app/static -> frontend/dist
+
+# ---------------------------------------------------------------------------
+# Detections API
+#
+# The product surface. Everything above this line reports on *events* the
+# pipeline processed; these endpoints report on *findings* an analyst works.
+# Registered before the SPA catch-all route, which would otherwise shadow them.
+# ---------------------------------------------------------------------------
+
+@app.post("/api/detections/analyse")
+async def analyse_for_detections(req: IngestRequest):
+    """Run one raw log line through the full detection stack."""
+    try:
+        ctx = orchestrator.process_sync(
+            raw_text=req.raw_text,
+            source_protocol=req.source_protocol,
+            source_metadata=req.source_metadata,
+            explicit_parser=req.explicit_parser,
+            skip_ml=True,
+        )
+        if ctx.normalized_event is None:
+            raise HTTPException(status_code=422, detail="Event could not be normalized")
+        epoch = _epoch_of_event(ctx.normalized_event)
+        return detection_service.analyse(ctx.normalized_event, epoch=epoch)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/detections")
+async def list_detections(
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    state: Optional[str] = None,
+    severity: Optional[str] = None,
+):
+    """Prioritised detection queue - the product's home screen."""
+    return detection_service.detections(limit=limit, offset=offset,
+                                        state=state, severity=severity)
+
+
+@app.get("/api/detections/summary")
+async def detections_summary():
+    """Volume, reduction ratio, and whether a trained model is in use."""
+    return detection_service.summary()
+
+
+@app.get("/api/detections/entities")
+async def detection_entities(limit: int = Query(default=25, ge=1, le=200)):
+    """Entities ranked by risk, for investigating by host rather than by alert."""
+    return {"entities": detection_service.entities(limit=limit)}
+
+
+@app.get("/api/detections/{detection_id}")
+async def detection_detail(detection_id: str):
+    detail = detection_service.detection(detection_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Detection not found")
+    return detail
+
+
+@app.get("/api/detections/{detection_id}/evidence")
+async def detection_evidence(detection_id: str):
+    """Independently verifiable evidence bundle (raw bytes + hash chain)."""
+    bundle = detection_service.evidence_bundle(detection_id)
+    if bundle is None:
+        raise HTTPException(status_code=404, detail="Detection not found")
+    return bundle
+
+
+class TriageRequest(BaseModel):
+    state: str = Field(..., description="new | investigating | resolved_true_positive "
+                                        "| resolved_false_positive | suppressed")
+    note: str = Field(default="", description="Analyst note")
+
+
+@app.post("/api/detections/{detection_id}/triage")
+async def triage_detection(detection_id: str, req: TriageRequest):
+    updated = detection_service.set_state(detection_id, req.state, req.note)
+    if updated is None:
+        raise HTTPException(status_code=404,
+                            detail="Detection not found, or invalid state")
+    return updated
+
+
+@app.post("/api/detections/replay-samples")
+async def replay_samples_into_detections():
+    """Push the bundled sample logs through the detection stack.
+
+    Gives the UI something real to show on a fresh start without needing the
+    training corpus, which is not shipped in the repository.
+    """
+    processed, failed = 0, 0
+    for sample in SAMPLE_LOGS:
+        try:
+            ctx = orchestrator.process_sync(raw_text=sample["raw"], skip_ml=True)
+            if ctx.normalized_event is None:
+                failed += 1
+                continue
+            detection_service.analyse(ctx.normalized_event,
+                                      epoch=_epoch_of_event(ctx.normalized_event))
+            processed += 1
+        except Exception:
+            failed += 1
+    return {"processed": processed, "failed": failed,
+            "summary": detection_service.summary()}
+
+
+@app.post("/api/detections/reset")
+async def reset_detections():
+    detection_service.reset()
+    return {"reset": True, "summary": detection_service.summary()}
+
+
+def _epoch_of_event(norm) -> float:
+    from backend.ml.features import _timestamp_parts
+    try:
+        return _timestamp_parts(norm)[0]
+    except Exception:
+        return 0.0
+
+
 static_dir_candidate = os.getenv("ULPF_STATIC_DIR")
 if not static_dir_candidate or not os.path.exists(static_dir_candidate):
     dist_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))

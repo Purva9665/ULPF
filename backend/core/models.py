@@ -167,6 +167,49 @@ class ULPFParsedEvent(BaseModel):
     parsing_duration_us: int = 0
 
 
+class ExtractionMethod(str, Enum):
+    """How a normalized field's value came to exist.
+
+    The distinction matters to detection, not just to auditing. A destination
+    port that was read directly out of the log line is evidence; one that was
+    inferred from a service name is a weaker signal; one that was defaulted
+    because the source did not carry it is not evidence at all.
+    """
+    EXTRACTED = "extracted"   # read verbatim from the raw event
+    DERIVED = "derived"       # computed from extracted values (e.g. direction)
+    INFERRED = "inferred"     # guessed from context (e.g. port from service name)
+    DEFAULTED = "defaulted"   # source carried nothing; a default was applied
+
+
+class FieldProvenance(BaseModel):
+    """Where one normalized field came from, and how much to trust it.
+
+    This is the record that makes USP-1 possible. Every wire format a pipeline
+    could ship to a SIEM - ECS, CEF, LEEF, OCSF JSON - carries the *value* of a
+    field but not the parser's confidence in it. That information is destroyed
+    at the pipeline/SIEM boundary, so a SIEM detecting on a mis-extracted field
+    cannot know it is doing so.
+
+    ULPF keeps it, and the detection layer consumes it: a detection resting on
+    low-confidence fields is downranked and labelled as degraded evidence
+    rather than presented with the same authority as a clean one.
+    """
+    source_key: Optional[str] = Field(
+        default=None,
+        description="Key in the parser's extracted_fields this value came from"
+    )
+    parser: str = Field(default="unknown", description="Parser that produced the value")
+    method: ExtractionMethod = Field(default=ExtractionMethod.EXTRACTED)
+    confidence: float = Field(
+        default=1.0, ge=0.0, le=1.0,
+        description="Parser confidence in THIS field, not in the event overall"
+    )
+    note: Optional[str] = Field(
+        default=None,
+        description="Why confidence is below 1.0, when it is"
+    )
+
+
 class ULPFNormalizedEvent(BaseModel):
     """Stage 3: Canonical Taxonomy Mapped Event"""
     event_id: str
@@ -182,8 +225,48 @@ class ULPFNormalizedEvent(BaseModel):
     threat: Optional[ThreatDetails] = None
     observer: ObserverDetails = Field(default_factory=ObserverDetails)
     unmapped_fields: Dict[str, Any] = Field(default_factory=dict)
+    field_provenance: Dict[str, FieldProvenance] = Field(
+        default_factory=dict,
+        description="Per-field origin and confidence, keyed by dotted canonical "
+                    "path (e.g. 'destination.port'). Consumed by the detection "
+                    "layer; exported so a downstream consumer can audit it."
+    )
     mapping_rule_used: str = "default_canonical_v1"
     normalization_duration_us: int = 0
+
+    def field_confidence(self, path: str, default: float = 1.0) -> float:
+        """Confidence in one canonical field. Absent provenance means untracked,
+        not untrusted - fields normalized before provenance tracking existed
+        must not be penalised retroactively."""
+        prov = self.field_provenance.get(path)
+        return prov.confidence if prov is not None else default
+
+    def parse_quality(self) -> Dict[str, Any]:
+        """Aggregate parse-quality summary over all tracked fields.
+
+        `mapped_ratio` is the coverage number the residue loop (USP-2) drives:
+        how much of what the parser found actually landed in the taxonomy
+        rather than in `unmapped_fields`.
+        """
+        provs = list(self.field_provenance.values())
+        tracked = len(provs)
+        mapped = tracked
+        unmapped = len(self.unmapped_fields)
+        confidences = [p.confidence for p in provs]
+        by_method: Dict[str, int] = {}
+        for p in provs:
+            by_method[p.method.value] = by_method.get(p.method.value, 0) + 1
+        return {
+            "fields_tracked": tracked,
+            "fields_unmapped": unmapped,
+            "mapped_ratio": round(mapped / (mapped + unmapped), 4) if (mapped + unmapped) else 1.0,
+            "min_confidence": round(min(confidences), 4) if confidences else 1.0,
+            "mean_confidence": round(sum(confidences) / tracked, 4) if tracked else 1.0,
+            "low_confidence_fields": sorted(
+                p_key for p_key, p in self.field_provenance.items() if p.confidence < 0.7
+            ),
+            "by_method": by_method,
+        }
 
 
 class ValidationCheckResult(BaseModel):

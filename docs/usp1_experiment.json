@@ -1,0 +1,114 @@
+{
+  "question": "Does feeding per-field parse confidence to the detection layer reduce false positives?",
+  "degradation_profile": {
+    "rate": 0.15,
+    "modes": [
+      "truncate",
+      "drop_field",
+      "shift_columns",
+      "encoding"
+    ]
+  },
+  "degradation_applied": {
+    "events": 200000,
+    "degraded": 29945,
+    "degraded_share": 0.1497,
+    "by_mode": {
+      "truncate": 7467,
+      "drop_field": 7636,
+      "shift_columns": 7336,
+      "encoding": 7506
+    },
+    "profile": {
+      "rate": 0.15,
+      "modes": [
+        "truncate",
+        "drop_field",
+        "shift_columns",
+        "encoding"
+      ]
+    }
+  },
+  "conditions": [
+    {
+      "condition": "clean / with confidence features",
+      "confidence_features": true,
+      "degraded": false,
+      "n_features": 44,
+      "parse_failures": 0,
+      "events": 200000,
+      "threshold": 0.8968,
+      "pr_auc": 0.9863,
+      "roc_auc": 0.992,
+      "precision": 0.901,
+      "recall": 0.9844,
+      "f1": 0.9408,
+      "fp_per_10k_benign": 154.2,
+      "tp": 7368,
+      "fp": 810,
+      "fn": 117,
+      "tn": 51705
+    },
+    {
+      "condition": "clean / without confidence features",
+      "confidence_features": false,
+      "degraded": false,
+      "n_features": 37,
+      "parse_failures": 0,
+      "events": 200000,
+      "threshold": 0.8676,
+      "pr_auc": 0.9863,
+      "roc_auc": 0.9919,
+      "precision": 0.93,
+      "recall": 0.9844,
+      "f1": 0.9564,
+      "fp_per_10k_benign": 105.7,
+      "tp": 7368,
+      "fp": 555,
+      "fn": 117,
+      "tn": 51960
+    },
+    {
+      "condition": "degraded / with confidence features",
+      "confidence_features": true,
+      "degraded": true,
+      "n_features": 44,
+      "parse_failures": 0,
+      "events": 200000,
+      "threshold": 0.7077,
+      "pr_auc": 0.7066,
+      "roc_auc": 0.9639,
+      "precision": 0.608,
+      "recall": 0.9866,
+      "f1": 0.7524,
+      "fp_per_10k_benign": 906.6,
+      "tp": 7385,
+      "fp": 4761,
+      "fn": 100,
+      "tn": 47754
+    },
+    {
+      "condition": "degraded / without confidence features",
+      "confidence_features": false,
+      "degraded": true,
+      "n_features": 37,
+      "parse_failures": 0,
+      "events": 200000,
+      "threshold": 0.6417,
+      "pr_auc": 0.7682,
+      "roc_auc": 0.9726,
+      "precision": 0.6239,
+      "recall": 0.9862,
+      "f1": 0.7643,
+      "fp_per_10k_benign": 847.4,
+      "tp": 7382,
+      "fp": 4450,
+      "fn": 103,
+      "tn": 48065
+    }
+  ],
+  "clean_fp_delta_per_10k": -48.5,
+  "degraded_fp_delta_per_10k": -59.2,
+  "verdict": "not supported",
+  "known_limitation": "Downranking low-confidence detections creates an evasion path: an attacker able to make their traffic log badly gains suppression. The engine floors the reliability factor so a degraded event is discounted rather than silenced."
+}

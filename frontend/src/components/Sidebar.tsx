@@ -1,12 +1,15 @@
 import React from 'react';
 import { 
   Activity, 
-  BarChart3, 
+
   Search, 
   Milestone,
   Terminal,
   Clock,
-  FileCode, Play } from 'lucide-react';
+  FileCode,
+  Play,
+  ShieldAlert,
+} from 'lucide-react';
 import type { EngineStats } from '../types';
 
 interface SidebarProps {
@@ -29,9 +32,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenExports,
 }) => {
   const MONITORING_NAV = [
+    { id: 'detections', label: 'Detections', icon: ShieldAlert },
     { id: 'demo', label: 'Demo', icon: Play },
-    { id: 'overview', label: 'Dashboard', icon: Activity },
-    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+    { id: 'overview', label: 'Pipeline', icon: Activity },
     { id: 'explorer', label: 'Log Explorer', icon: Search, badge: stats?.storage?.total_events ? String(stats.storage.total_events) : undefined },
     { id: 'journey', label: 'Event Journey', icon: Milestone },
   ];
