@@ -1,5 +1,3 @@
-version: '3.8'
-
 # ═══════════════════════════════════════════════════════════════════════
 # ULPF Enterprise Docker Compose
 # Services: ULPF Engine + PostgreSQL (three-database architecture)
