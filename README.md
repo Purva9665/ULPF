@@ -62,7 +62,7 @@ Activate it — **pick the line for your shell**:
 | Shell | Command |
 |---|---|
 | Windows PowerShell | `.venv\Scripts\Activate.ps1` |
-| Windows CMD | `.venv\Scriptsctivate.bat` |
+| Windows CMD | `.venv\Scripts\activate.bat` |
 | Git Bash / macOS / Linux | `source .venv/bin/activate` (Git Bash on Windows: `source .venv/Scripts/activate`) |
 
 If PowerShell blocks the script, run this once and try again:
