@@ -17,7 +17,14 @@ pydantic>=2.6.0
 # --- detection model ---
 # scikit-learn provides HistGradientBoostingClassifier (fusion), isotonic
 # calibration, and IsolationForest. ECOD is implemented in-tree, so no PyOD.
-scikit-learn>=1.4.0
+#
+# Lower bound is 1.6, not 1.4: the shipped model in models/ was calibrated with
+# `sklearn.frozen.FrozenEstimator`, which did not exist before 1.6. On an older
+# version the pickle fails to load and the app silently falls back to heuristic
+# mode - it keeps working but stops being the model we trained and measured.
+# Upper bound because scikit-learn pickles are not guaranteed portable across
+# major versions.
+scikit-learn>=1.6,<2.0
 numpy>=1.26.0
 
 # --- tests ---

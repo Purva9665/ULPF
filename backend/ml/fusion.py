@@ -207,7 +207,14 @@ class FusionModel:
     # -- persistence --------------------------------------------------------
 
     def save(self, path: str) -> None:
-        """Persist the fitted model plus everything needed to interpret it."""
+        """Persist the fitted model plus everything needed to interpret it.
+
+        The training environment is recorded because scikit-learn pickles are
+        version-sensitive: this model is calibrated with `FrozenEstimator`,
+        which did not exist before scikit-learn 1.6, so loading it on an older
+        install fails. Recording the version turns that from a mystery into a
+        message that names the actual problem.
+        """
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         with open(path, "wb") as handle:
             pickle.dump({
@@ -216,6 +223,7 @@ class FusionModel:
                 "threshold": self.threshold,
                 "calibrated": self._calibrated,
                 "trained_on": self._trained_on,
+                "environment": _training_environment(),
             }, handle, protocol=pickle.HIGHEST_PROTOCOL)
         # A sidecar the user can read without unpickling, because a binary
         # blob nobody can inspect is a poor thing to ship into a secure network.
@@ -226,6 +234,7 @@ class FusionModel:
                 "threshold": self.threshold,
                 "trained_on": self._trained_on,
                 "n_inputs": len(self.input_names),
+                "environment": _training_environment(),
             }, handle, indent=2)
 
     @classmethod
@@ -239,11 +248,13 @@ class FusionModel:
         )
         model._calibrated = blob["calibrated"]
         model._trained_on = blob.get("trained_on", {})
+        model.environment = blob.get("environment", {})
         return model
 
     def describe(self) -> Dict[str, Any]:
         return {
             "trained": self.trained,
+            "environment": getattr(self, "environment", {}),
             "n_features": len(self.feature_names),
             "n_inputs": len(self.input_names),
             "detectors": self.detector_order,
@@ -266,6 +277,63 @@ def _freeze(estimator):
         return FrozenEstimator(estimator)
     except ImportError:          # scikit-learn < 1.6
         return estimator
+
+
+def _training_environment() -> Dict[str, Any]:
+    """Versions the model was produced with, for reproducibility and diagnosis."""
+    import platform
+    import sys
+    try:
+        import sklearn
+        sklearn_version = sklearn.__version__
+    except Exception:                                # pragma: no cover
+        sklearn_version = "unknown"
+    try:
+        import numpy
+        numpy_version = numpy.__version__
+    except Exception:                                # pragma: no cover
+        numpy_version = "unknown"
+    return {
+        "sklearn": sklearn_version,
+        "numpy": numpy_version,
+        "python": sys.version.split()[0],
+        "platform": platform.platform(),
+    }
+
+
+def check_environment(recorded: Dict[str, Any]) -> Optional[str]:
+    """Compare the current environment against the one a model was trained in.
+
+    Returns a human-readable warning, or None when nothing looks wrong. The
+    scikit-learn version is the one that actually breaks things - a pickle
+    written by a newer version can reference classes an older one does not
+    have, and `FrozenEstimator` (used by this model's calibration) is exactly
+    such a class, introduced in 1.6.
+    """
+    if not recorded:
+        return None
+    try:
+        import sklearn
+        current = sklearn.__version__
+    except Exception:                                # pragma: no cover
+        return None
+    trained_with = recorded.get("sklearn")
+    if not trained_with or trained_with == current:
+        return None
+
+    def major_minor(v: str):
+        parts = v.split(".")
+        try:
+            return int(parts[0]), int(parts[1])
+        except (IndexError, ValueError):
+            return None
+
+    a, b = major_minor(current), major_minor(trained_with)
+    if a is None or b is None or a == b:
+        return None
+    return (f"model was trained with scikit-learn {trained_with}, this "
+            f"environment has {current}; predictions may differ or the model "
+            f"may fail to load. Pin scikit-learn to match, or retrain.")
 
 
 def _heuristic_fuse(signals: Dict[str, Any], order: Sequence[str]) -> float:

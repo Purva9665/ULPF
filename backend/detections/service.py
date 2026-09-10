@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional
 from backend.detections.correlator import Correlator
 from backend.detections.models import Detection, TriageState
 from backend.ml.engine import DetectionEngine
-from backend.ml.fusion import FusionModel
+from backend.ml.fusion import FusionModel, check_environment
 
 DEFAULT_MODEL_PATH = os.environ.get(
     "ULPF_MODEL_PATH", os.path.join("models", "ulpf_fusion.pkl")
@@ -36,6 +36,7 @@ class DetectionService:
     def __init__(self, model_path: str = DEFAULT_MODEL_PATH):
         self.model_path = model_path
         self.model_error: Optional[str] = None
+        self.environment_warning: Optional[str] = None
         fusion = self._load_model(model_path)
         self.engine = DetectionEngine(fusion=fusion)
         self.correlator = Correlator()
@@ -49,10 +50,21 @@ class DetectionService:
             self.model_error = f"no trained model at {path}; running heuristic mode"
             return None
         try:
-            return FusionModel.load(path)
-        except Exception as exc:                      # pragma: no cover
-            self.model_error = f"failed to load {path}: {exc}"
+            model = FusionModel.load(path)
+        except Exception as exc:
+            # Loudly, with the most likely cause named. The commonest failure
+            # is a scikit-learn older than 1.6, which cannot unpickle the
+            # FrozenEstimator this model's calibration uses.
+            self.model_error = (
+                f"failed to load {path}: {exc}. If this mentions "
+                f"'FrozenEstimator' or 'sklearn.frozen', the installed "
+                f"scikit-learn is older than 1.6 - run "
+                f"'pip install -r backend/requirements.txt' to get a "
+                f"compatible version."
+            )
             return None
+        self.environment_warning = check_environment(getattr(model, "environment", {}))
+        return model
 
     # -- ingestion ----------------------------------------------------------
 
@@ -123,6 +135,7 @@ class DetectionService:
                     else "heuristic",
             "model_path": self.model_path,
             "model_error": self.model_error,
+            "environment_warning": self.environment_warning,
             "threshold": self.engine.fusion.threshold if self.engine.fusion else None,
             "novelty_fitted": stats["novelty_fitted"],
             "entities_tracked": stats["profiles"]["entities_tracked"],
