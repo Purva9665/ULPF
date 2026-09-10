@@ -49,13 +49,35 @@ Needs **Python 3.11+** and **Node 20+**.
 git clone https://github.com/Purva9665/ULPF.git && cd ULPF
 ```
 
-**1. Backend**
+**1. Backend** — create a virtual environment and install dependencies.
+
+Create it:
 
 ```bash
-python -m venv .venv && .venv/Scripts/activate && pip install -r backend/requirements.txt
+python -m venv .venv
 ```
 
-On macOS/Linux the activate line is `source .venv/bin/activate` instead.
+Activate it — **pick the line for your shell**:
+
+| Shell | Command |
+|---|---|
+| Windows PowerShell | `.venv\Scripts\Activate.ps1` |
+| Windows CMD | `.venv\Scriptsctivate.bat` |
+| Git Bash / macOS / Linux | `source .venv/bin/activate` (Git Bash on Windows: `source .venv/Scripts/activate`) |
+
+If PowerShell blocks the script, run this once and try again:
+
+```bash
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+Then install:
+
+```bash
+pip install -r backend/requirements.txt
+```
+
+Skipping the virtual environment entirely also works — `pip install -r backend/requirements.txt` straight into your system Python is fine for a prototype.
 
 **2. Frontend** (in the same folder)
 
