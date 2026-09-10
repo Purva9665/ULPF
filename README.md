@@ -12,12 +12,12 @@ work** — not a stream of scored events.
 
 Two ways to run it.
 
-> **Verification status, so you know what to expect:** Option B (local) is the
-> path that has been run end-to-end and confirmed working. Docker is configured
-> but **could not be tested** on the machine this was built on — Docker was not
-> installed there. If Option A gives you trouble, use Option B; it is known good.
+> **Both paths have been run end-to-end and verified.** The Docker image was
+> built and started, the trained model loads inside the container, and its
+> predictions were checked to be bit-identical to the local install (see
+> [Container verification](#container-verification) below).
 
-### Option A — Docker (not yet verified)
+### Option A — Docker (recommended)
 
 Needs [Docker Desktop](https://www.docker.com/products/docker-desktop/) only.
 No Python, no Node.
@@ -41,7 +41,7 @@ To stop it:
 docker compose down
 ```
 
-### Option B — Run locally without Docker (verified working)
+### Option B — Run locally without Docker
 
 Needs **Python 3.11+** and **Node 20+**.
 
@@ -96,6 +96,28 @@ Open **http://localhost:8000**.
 > Building the frontend once (step 2) means the Python server serves the UI
 > too, so you only run one process. For frontend development with hot reload,
 > run `npm run dev --prefix frontend` in a second terminal and use port 5173.
+
+### Container verification
+
+Verified on Docker 29.7.2 / Compose v5.5.1:
+
+| Check | Result |
+|---|---|
+| `docker compose build` | succeeds, ~90s cold |
+| Image size | 650 MB |
+| Container healthcheck | `healthy` in ~9s |
+| Trained model loads inside container | yes — `mode: trained`, no error |
+| 12 sample logs through the container | 12 processed, 0 failed, 2 detections |
+| Build context | 1.7 MB (a `.dockerignore` keeps the corpus out) |
+
+**One expected warning.** The container resolves scikit-learn 1.9.1 while the
+shipped model was trained on 1.9.0, so scikit-learn prints
+`InconsistentVersionWarning` at startup. This was checked rather than assumed:
+running 200 identical feature vectors through the model in both environments
+gives **bit-identical probabilities** (sum delta 0.0), across different
+scikit-learn patch versions, different Python versions (3.14 vs 3.11) and
+different operating systems. The warning is cosmetic here. If you would rather
+not see it at all, pin `scikit-learn==1.9.0` in `backend/requirements.txt`.
 
 ---
 
