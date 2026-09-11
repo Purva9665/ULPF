@@ -273,11 +273,19 @@ These are stated here rather than discovered later.
 - **Protocol B is poor.** On attack families it has never seen, precision drops
   to 0.42 and false positives rise sharply. Recall stays high (0.93), so the
   ensemble still *fires* on unseen attacks — it just fires on a lot else too.
-- **The confidence-feature mechanism did not work.** Feeding per-field parse
-  confidence into detection was tested against a control and made false
-  positives *worse* (clean: 154.2 vs 105.7 FP/10k; degraded: 906.6 vs 847.4).
-  Reported as a null result in `docs/usp1_experiment.json`. The provenance
-  layer still has value for auditing; it did not improve detection.
+- **The confidence-feature mechanism did not work**, and the first attempt to
+  measure it was itself flawed. Each condition chose its own threshold by
+  maximising F1 on its own training split, so the false-positive counts were
+  read at *different operating points* (0.8294, 0.8698, 0.8968, 0.8676) and are
+  not a valid comparison. That flaw produced two reports that contradict each
+  other: `docs/model_evaluation.json` shows 59.5 vs 122.2 FP/10k (mechanism
+  helps), `docs/usp1_experiment.json` shows 154.2 vs 105.7 (mechanism hurts).
+  The threshold-independent metric is the one to trust, and it says the
+  mechanism does nothing on clean data (PR-AUC 0.9863 both ways) and is
+  actively worse under degradation (0.7066 with vs 0.7682 without). So the
+  conclusion stands - the mechanism is not supported - but the FP figures
+  previously quoted here were not evidence for it. `scripts/usp1_matched_recall.py`
+  re-runs the comparison at matched recall, which is the correct test.
 - **Sampling artifact.** Training sampled 120,000 flows per capture day, which
   thins the event stream and therefore understates true event rates. The
   temporal detector measures events per 60 seconds of real time, so its
